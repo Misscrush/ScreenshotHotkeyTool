@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Text;
@@ -704,6 +705,8 @@ namespace ScreenshotHotkeyTool
             var saveButton = new Button { Text = "保存", Width = 78, Height = 30 };
             var copyButton = new Button { Text = "复制", Width = 78, Height = 30 };
             var formatButton = new Button { Text = "去格式", Width = 86, Height = 30 };
+            var translateToEnglishButton = new Button { Text = "译英", Width = 78, Height = 30 };
+            var translateToChineseButton = new Button { Text = "译中", Width = 78, Height = 30 };
 
             resultBox = new TextBox
             {
@@ -721,6 +724,8 @@ namespace ScreenshotHotkeyTool
             toolbar.Controls.Add(saveButton);
             toolbar.Controls.Add(copyButton);
             toolbar.Controls.Add(formatButton);
+            toolbar.Controls.Add(translateToEnglishButton);
+            toolbar.Controls.Add(translateToChineseButton);
             Controls.Add(resultBox);
             Controls.Add(toolbar);
             Controls.Add(header);
@@ -750,6 +755,9 @@ namespace ScreenshotHotkeyTool
                 }
             };
 
+            translateToEnglishButton.Click += delegate { TranslateCurrentText("en", translateToEnglishButton, translateToChineseButton); };
+            translateToChineseButton.Click += delegate { TranslateCurrentText("zh-CN", translateToChineseButton, translateToEnglishButton); };
+
             saveButton.Click += delegate
             {
                 using (var dialog = new SaveFileDialog())
@@ -770,12 +778,129 @@ namespace ScreenshotHotkeyTool
             closeButton.Click += delegate { Close(); };
         }
 
+        private void TranslateCurrentText(string targetLanguage, Button primaryButton, Button secondaryButton)
+        {
+            var sourceText = resultBox.Text;
+            if (string.IsNullOrWhiteSpace(sourceText))
+            {
+                statusLabel.Text = "没有可翻译的文字";
+                return;
+            }
+
+            primaryButton.Enabled = false;
+            secondaryButton.Enabled = false;
+            statusLabel.Text = targetLanguage == "en" ? "正在翻译为英文..." : "正在翻译为中文...";
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string translatedText = null;
+                Exception error = null;
+                try
+                {
+                    translatedText = TranslationRunner.TranslatePreservingLines(sourceText, targetLanguage);
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                }
+
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    primaryButton.Enabled = true;
+                    secondaryButton.Enabled = true;
+                    if (error != null)
+                    {
+                        statusLabel.Text = "翻译失败：" + error.Message;
+                        return;
+                    }
+
+                    resultBox.Text = translatedText;
+                    formatRemoved = false;
+                    statusLabel.Text = targetLanguage == "en" ? "已翻译为英文" : "已翻译为中文";
+                });
+            });
+        }
+
         private static string RemoveTextFormatting(string text)
         {
             if (string.IsNullOrWhiteSpace(text))
                 return string.Empty;
 
             return Regex.Replace(text, @"\s+", " ").Trim();
+        }
+    }
+
+    internal static class TranslationRunner
+    {
+        private static readonly Dictionary<string, string> translationCache = new Dictionary<string, string>();
+        private static readonly object cacheLock = new object();
+
+        public static string TranslatePreservingLines(string text, string targetLanguage)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            var normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
+            var cacheKey = targetLanguage + "|" + normalized;
+            lock (cacheLock)
+            {
+                if (translationCache.ContainsKey(cacheKey))
+                    return translationCache[cacheKey];
+            }
+
+            var translated = Translate(normalized, targetLanguage);
+            translated = translated.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", Environment.NewLine);
+            lock (cacheLock)
+            {
+                translationCache[cacheKey] = translated;
+            }
+            return translated;
+        }
+
+        private static string Translate(string text, string targetLanguage)
+        {
+            try
+            {
+                ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+            }
+            catch
+            {
+            }
+
+            var url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl="
+                + Uri.EscapeDataString(targetLanguage)
+                + "&dt=t&q="
+                + Uri.EscapeDataString(text);
+
+            using (var client = new WebClient())
+            {
+                client.Encoding = Encoding.UTF8;
+                client.Headers.Add("User-Agent", "ScreenshotHotkeyTool");
+                var json = client.DownloadString(url);
+                return ParseGoogleTranslateResult(json);
+            }
+        }
+
+        private static string ParseGoogleTranslateResult(string json)
+        {
+            var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            var root = serializer.DeserializeObject(json) as object[];
+            if (root == null || root.Length == 0)
+                return string.Empty;
+
+            var sentences = root[0] as object[];
+            if (sentences == null)
+                return string.Empty;
+
+            var builder = new StringBuilder();
+            foreach (var item in sentences)
+            {
+                var segment = item as object[];
+                if (segment != null && segment.Length > 0)
+                    builder.Append(Convert.ToString(segment[0]));
+            }
+
+            return builder.ToString();
         }
     }
 
@@ -1005,6 +1130,14 @@ namespace ScreenshotHotkeyTool
         {
             if (!string.IsNullOrWhiteSpace(configuredPath))
                 return configuredPath.Trim();
+
+            var bundledPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Tesseract-OCR", "tesseract.exe");
+            if (File.Exists(bundledPath))
+                return bundledPath;
+
+            var localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tesseract.exe");
+            if (File.Exists(localPath))
+                return localPath;
 
             var installedPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Tesseract-OCR", "tesseract.exe");
             if (File.Exists(installedPath))

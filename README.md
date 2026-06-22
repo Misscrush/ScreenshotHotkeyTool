@@ -11,25 +11,33 @@
 - 多区域 OCR：预览里可画多个框选，点“识别文字”后依次识别全部区域。
 - 格式处理：默认尽量保留换行和空格；可一键“去格式”，再点可“复原格式”。
 - 中文优化：自动去掉中文字符之间被 OCR 误加的空格。
+- 翻译：OCR 结果可一键译英或译中，重复翻译会使用本地缓存。
 - 本地运行：截图和 OCR 都在本机处理，不上传图片。
 
 ## 安装说明
 
-### 方式一：直接使用
+### 推荐方式：下载安装包
 
-1. 打开仓库主页。
-2. 下载 `ScreenshotHotkeyTool.exe`。
-3. 双击 `ScreenshotHotkeyTool.exe`。
-4. 程序会在 Windows 右下角托盘后台运行。
-5. 右键托盘图标，可以打开“立即截图”“识别文字”“设置”“退出”。
+1. 打开 GitHub Releases。
+2. 下载 `ScreenshotHotkeyTool-Portable-YYYYMMDD.zip`。
+3. 解压 zip。
+4. 双击 `Install.bat`。
+5. 安装脚本会复制到当前用户目录、创建桌面快捷方式，并自动启动工具。
+
+安装包已经内置：
+
+- `ScreenshotHotkeyTool.exe`
+- Tesseract OCR
+- 简体中文/英文 OCR 语言包
+- 默认配置
 
 如果 Windows 弹出安全提示，选择“更多信息”后点击“仍要运行”。这是因为 exe 没有代码签名。
 
-### OCR 安装
+### 方式二：只下载 exe
 
-如果只需要截图、标注、复制和保存，可以不安装 OCR。
+如果你只下载 `ScreenshotHotkeyTool.exe`，截图和标注可以直接用。
 
-如果需要“识别文字”，需要安装 Tesseract OCR。推荐用 winget：
+但 OCR 需要 Tesseract。推荐用完整安装包，或者自行安装：
 
 ```powershell
 winget install --id UB-Mannheim.TesseractOCR
@@ -41,13 +49,13 @@ winget install --id UB-Mannheim.TesseractOCR
 C:\Program Files\Tesseract-OCR\tesseract.exe
 ```
 
-仓库自带 `tessdata`，包含：
+仓库和安装包自带 `tessdata`，包含：
 
 - `chi_sim`：简体中文
 - `eng`：英文
 - `osd`：方向检测
 
-默认 OCR 语言为 `chi_sim+eng`。如果识别失败，右键托盘图标进入“设置”，手动填写 `tesseract.exe` 路径。
+默认 OCR 语言为 `chi_sim+eng`。完整安装包会自动使用内置 OCR，不需要手动填写路径。
 
 ### 配置文件
 
@@ -88,6 +96,8 @@ C:\Program Files\Tesseract-OCR\tesseract.exe
 - `保存`：保存为 `.txt`。
 - `去格式`：清理换行和多余空格。
 - `复原格式`：恢复识别时的原格式。
+- `译英`：把当前文字翻译成英文。
+- `译中`：把当前文字翻译成中文。
 
 ### 截图后识别文字
 
@@ -159,12 +169,15 @@ powershell -ExecutionPolicy Bypass -File .\tests\ArrowAnnotationTests.ps1
 
 ## 隐私
 
-工具不包含云端上传逻辑。截图、标注、OCR 识别和保存都在本机完成。
+截图、标注、OCR 识别和保存都在本机完成。
+
+翻译功能需要网络，会把当前 OCR 文本发送到翻译接口；不使用翻译按钮时不会发送。
 
 ## 限制
 
 - 当前仅面向 Windows。
 - OCR 质量取决于 Tesseract、截图清晰度和语言包。
+- 翻译功能依赖网络和翻译接口可用性。
 - 标注写入图片后不可单独移动，只能撤销或清空。
 
 ## License

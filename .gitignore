@@ -1,4 +1,5 @@
 captures/
+dist/
 last-save.txt
 last-trigger.txt
 settings.json
