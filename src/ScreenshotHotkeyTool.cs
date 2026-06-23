@@ -84,18 +84,18 @@ namespace ScreenshotHotkeyTool
 
             if (!screenshotHotkeyWindow.Register(settings.Modifiers, settings.KeyCode))
             {
-                MessageBox.Show(settings.DisplayText + " 已被占用，请在设置里换一个快捷键。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(settings.DisplayText + " ?????????????????", "?????", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             if (settings.OcrEnabled && !ocrHotkeyWindow.Register(settings.OcrModifiers, settings.OcrKeyCode))
             {
-                MessageBox.Show(settings.OcrDisplayText + " 已被占用，请在设置里换一个 OCR 快捷键。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(settings.OcrDisplayText + " ????????????? OCR ????", "?????", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
 
             var menu = new ContextMenuStrip();
-            menu.Items.Add("立即截图", null, delegate { TriggerSnip(); });
-            menu.Items.Add("识别文字", null, delegate { TriggerOcr(); });
-            menu.Items.Add("设置", null, delegate { OpenSettings(); });
-            menu.Items.Add("退出", null, delegate { ExitThread(); });
+            menu.Items.Add("????", null, delegate { TriggerSnip(); });
+            menu.Items.Add("????", null, delegate { TriggerOcr(); });
+            menu.Items.Add("??", null, delegate { OpenSettings(); });
+            menu.Items.Add("??", null, delegate { ExitThread(); });
 
             trayAppIcon = TrayIconFactory.Create();
             trayIcon = new NotifyIcon
@@ -120,7 +120,7 @@ namespace ScreenshotHotkeyTool
                 if (!ApplyHotkeySettings(newSettings))
                 {
                     ApplyHotkeySettings(oldSettings);
-                    MessageBox.Show("快捷键已被占用，请换一个组合。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show("???????????????", "?????", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
@@ -132,7 +132,7 @@ namespace ScreenshotHotkeyTool
 
         private void UpdateTrayText()
         {
-            trayIcon.Text = Shorten("截图：" + settings.DisplayText + " OCR：" + settings.OcrDisplayText, 63);
+            trayIcon.Text = Shorten("???" + settings.DisplayText + " OCR?" + settings.OcrDisplayText, 63);
         }
 
         private bool ApplyHotkeySettings(HotkeySettings candidate)
@@ -163,7 +163,7 @@ namespace ScreenshotHotkeyTool
         {
             if (!settings.OcrEnabled)
             {
-                MessageBox.Show("OCR 未启用，请在设置里开启。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("OCR ????????????", "?????", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
@@ -228,7 +228,7 @@ namespace ScreenshotHotkeyTool
             }
             catch (Exception ex)
             {
-                return "OCR 失败：" + Environment.NewLine + ex.Message;
+                return "OCR ???" + Environment.NewLine + ex.Message;
             }
         }
 
@@ -239,14 +239,14 @@ namespace ScreenshotHotkeyTool
                 directory = HotkeySettings.DefaultSaveDirectory();
 
             Directory.CreateDirectory(directory);
-            var filename = "截图_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png";
+            var filename = "??_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png";
             string path;
             using (var dialog = new SaveFileDialog())
             {
-                dialog.Title = "保存截图";
+                dialog.Title = "????";
                 dialog.InitialDirectory = directory;
                 dialog.FileName = filename;
-                dialog.Filter = "PNG 图片 (*.png)|*.png";
+                dialog.Filter = "PNG ?? (*.png)|*.png";
                 dialog.DefaultExt = "png";
                 dialog.AddExtension = true;
                 dialog.OverwritePrompt = true;
@@ -409,7 +409,7 @@ namespace ScreenshotHotkeyTool
 
         private void DrawHint(Graphics graphics)
         {
-            var text = "拖动鼠标框选截图区域，按 Esc 取消";
+            var text = "???????????? Esc ??";
             using (var font = new Font("Microsoft YaHei UI", 10))
             {
                 var size = graphics.MeasureString(text, font);
@@ -445,7 +445,7 @@ namespace ScreenshotHotkeyTool
             this.settings = settings ?? HotkeySettings.Default();
             originalImage = (Bitmap)image.Clone();
 
-            Text = "截图预览";
+            Text = "????";
             AutoScaleMode = AutoScaleMode.None;
             StartPosition = FormStartPosition.CenterScreen;
             MinimizeBox = false;
@@ -461,17 +461,17 @@ namespace ScreenshotHotkeyTool
                 BackColor = Color.FromArgb(245, 247, 250)
             };
 
-            var copyButton = new Button { Text = "复制", Width = 78, Height = 30 };
-            var saveButton = new Button { Text = "保存", Width = 78, Height = 30 };
-            var ocrButton = new Button { Text = "识别文字", Width = 96, Height = 30 };
-            drawButton = new Button { Text = "画图", Width = 78, Height = 30 };
-            var rectangleButton = new Button { Text = "框选", Width = 78, Height = 30 };
+            var copyButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var saveButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var ocrButton = new Button { Text = "????", Width = 96, Height = 30 };
+            drawButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var rectangleButton = new Button { Text = "??", Width = 78, Height = 30 };
             this.rectangleButton = rectangleButton;
-            textButton = new Button { Text = "文字", Width = 78, Height = 30 };
-            arrowButton = new Button { Text = "箭头", Width = 78, Height = 30 };
-            var undoButton = new Button { Text = "撤销", Width = 78, Height = 30 };
-            var clearButton = new Button { Text = "清空", Width = 78, Height = 30 };
-            var closeButton = new Button { Text = "关闭", Width = 78, Height = 30 };
+            textButton = new Button { Text = "??", Width = 78, Height = 30 };
+            arrowButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var undoButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var clearButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var closeButton = new Button { Text = "??", Width = 78, Height = 30 };
 
             toolbar.Controls.Add(copyButton);
             toolbar.Controls.Add(saveButton);
@@ -496,7 +496,7 @@ namespace ScreenshotHotkeyTool
                 Padding = new Padding(12, 5, 12, 0),
                 BackColor = Color.FromArgb(250, 250, 250),
                 ForeColor = Color.FromArgb(80, 80, 80),
-                Text = "未框选时识别整张截图；框选后识别最后一个框选区域"
+                Text = "????????????????????????"
             };
 
             Controls.Add(canvas);
@@ -506,7 +506,7 @@ namespace ScreenshotHotkeyTool
             copyButton.Click += delegate
             {
                 Clipboard.SetImage((Bitmap)canvas.Image.Clone());
-                Text = "截图预览 - 已复制到剪贴板";
+                Text = "???? - ???????";
             };
 
             saveButton.Click += delegate
@@ -515,7 +515,7 @@ namespace ScreenshotHotkeyTool
                 {
                     var path = saveImage(copy);
                     if (!string.IsNullOrEmpty(path))
-                        Text = "截图预览 - 已保存：" + path;
+                        Text = "???? - ????" + path;
                 }
             };
 
@@ -523,7 +523,7 @@ namespace ScreenshotHotkeyTool
             {
                 var result = new OcrResultForm(RecognizeImages(canvas.GetImagesForOcr(originalImage)), settings);
                 result.Show();
-                statusLabel.Text = canvas.HasRectangleSelection ? "已识别全部框选区域" : "已识别整张截图";
+                statusLabel.Text = canvas.HasRectangleSelection ? "?????????" : "???????";
             };
 
             drawButton.Click += delegate
@@ -565,10 +565,10 @@ namespace ScreenshotHotkeyTool
 
         private void UpdateToolButtons()
         {
-            drawButton.Text = canvas.Mode == AnnotationMode.Freehand ? "停止画图" : "画图";
-            rectangleButton.Text = canvas.Mode == AnnotationMode.Rectangle ? "停止框选" : "框选";
-            textButton.Text = canvas.Mode == AnnotationMode.Text ? "停止文字" : "文字";
-            arrowButton.Text = canvas.Mode == AnnotationMode.Arrow ? "停止箭头" : "箭头";
+            drawButton.Text = canvas.Mode == AnnotationMode.Freehand ? "????" : "??";
+            rectangleButton.Text = canvas.Mode == AnnotationMode.Rectangle ? "????" : "??";
+            textButton.Text = canvas.Mode == AnnotationMode.Text ? "????" : "??";
+            arrowButton.Text = canvas.Mode == AnnotationMode.Arrow ? "????" : "??";
             canvas.Cursor = canvas.Mode == AnnotationMode.None ? Cursors.Default : Cursors.Cross;
             UpdateStatus();
         }
@@ -576,15 +576,15 @@ namespace ScreenshotHotkeyTool
         private void UpdateStatus()
         {
             if (canvas.Mode == AnnotationMode.Freehand)
-                statusLabel.Text = "画图模式";
+                statusLabel.Text = "????";
             else if (canvas.Mode == AnnotationMode.Rectangle)
-                statusLabel.Text = "框选模式：可画多个区域，识别文字时会依次识别全部框选";
+                statusLabel.Text = "??????????????????????????";
             else if (canvas.Mode == AnnotationMode.Text)
-                statusLabel.Text = "文字模式：拖动框选文字区域，松手后输入文字";
+                statusLabel.Text = "?????????????????????";
             else if (canvas.Mode == AnnotationMode.Arrow)
-                statusLabel.Text = "箭头模式：拖动设置箭头方向，松手后画出箭头";
+                statusLabel.Text = "?????????????????????";
             else
-                statusLabel.Text = canvas.HasRectangleSelection ? "已有框选：识别文字时会依次识别全部框选" : "未框选时识别整张截图；框选后识别全部框选区域";
+                statusLabel.Text = canvas.HasRectangleSelection ? "???????????????????" : "??????????????????????";
         }
 
         private string RecognizeImages(List<Bitmap> images)
@@ -635,7 +635,7 @@ namespace ScreenshotHotkeyTool
 
         public TextAnnotationForm()
         {
-            Text = "添加文字";
+            Text = "????";
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -643,10 +643,10 @@ namespace ScreenshotHotkeyTool
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(360, 136);
 
-            var label = new Label { Text = "输入要添加到截图上的文字", Left = 14, Top = 14, Width = 320 };
+            var label = new Label { Text = "????????????", Left = 14, Top = 14, Width = 320 };
             textBox = new TextBox { Left = 16, Top = 42, Width = 328 };
-            var okButton = new Button { Text = "确定", Left = 186, Top = 92, Width = 76, DialogResult = DialogResult.OK };
-            var cancelButton = new Button { Text = "取消", Left = 268, Top = 92, Width = 76, DialogResult = DialogResult.Cancel };
+            var okButton = new Button { Text = "??", Left = 186, Top = 92, Width = 76, DialogResult = DialogResult.OK };
+            var cancelButton = new Button { Text = "??", Left = 268, Top = 92, Width = 76, DialogResult = DialogResult.Cancel };
 
             Controls.Add(label);
             Controls.Add(textBox);
@@ -669,13 +669,14 @@ namespace ScreenshotHotkeyTool
         private readonly Label statusLabel;
         private readonly string formattedText;
         private readonly HotkeySettings settings;
+        private readonly ComboBox translationProviderBox;
         private bool formatRemoved;
 
         public OcrResultForm(string text, HotkeySettings settings)
         {
             formattedText = text ?? string.Empty;
             this.settings = settings ?? HotkeySettings.Default();
-            Text = "文字识别结果";
+            Text = "??????";
             AutoScaleMode = AutoScaleMode.None;
             StartPosition = FormStartPosition.CenterScreen;
             MinimizeBox = false;
@@ -694,7 +695,7 @@ namespace ScreenshotHotkeyTool
             {
                 Dock = DockStyle.Fill,
                 ForeColor = Color.FromArgb(65, 65, 65),
-                Text = string.IsNullOrWhiteSpace(text) ? "未识别到文字" : "已识别 " + text.Trim().Length + " 个字符"
+                Text = string.IsNullOrWhiteSpace(text) ? "??????" : "??? " + text.Trim().Length + " ???"
             };
 
             var toolbar = new FlowLayoutPanel
@@ -706,12 +707,27 @@ namespace ScreenshotHotkeyTool
                 BackColor = Color.FromArgb(245, 247, 250)
             };
 
-            var closeButton = new Button { Text = "关闭", Width = 78, Height = 30 };
-            var saveButton = new Button { Text = "保存", Width = 78, Height = 30 };
-            var copyButton = new Button { Text = "复制", Width = 78, Height = 30 };
-            var formatButton = new Button { Text = "去格式", Width = 86, Height = 30 };
-            var translateToEnglishButton = new Button { Text = "译英", Width = 78, Height = 30 };
-            var translateToChineseButton = new Button { Text = "译中", Width = 78, Height = 30 };
+            var closeButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var saveButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var copyButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var formatButton = new Button { Text = "???", Width = 86, Height = 30 };
+            var translateToEnglishButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var translateToChineseButton = new Button { Text = "??", Width = 78, Height = 30 };
+            translationProviderBox = new ComboBox { Width = 90, Height = 30, DropDownStyle = ComboBoxStyle.DropDownList };
+            translationProviderBox.Items.Add("Google");
+            translationProviderBox.Items.Add("Baidu");
+            translationProviderBox.SelectedItem = string.IsNullOrWhiteSpace(this.settings.TranslationProvider) ? "Google" : this.settings.TranslationProvider;
+            if (translationProviderBox.SelectedIndex < 0)
+                translationProviderBox.SelectedItem = "Google";
+
+            var translationProviderLabel = new Label
+            {
+                Text = "???",
+                AutoSize = true,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Padding = new Padding(0, 7, 0, 0),
+                Margin = new Padding(8, 3, 0, 3)
+            };
 
             resultBox = new TextBox
             {
@@ -731,6 +747,8 @@ namespace ScreenshotHotkeyTool
             toolbar.Controls.Add(formatButton);
             toolbar.Controls.Add(translateToEnglishButton);
             toolbar.Controls.Add(translateToChineseButton);
+            toolbar.Controls.Add(translationProviderBox);
+            toolbar.Controls.Add(translationProviderLabel);
             Controls.Add(resultBox);
             Controls.Add(toolbar);
             Controls.Add(header);
@@ -739,7 +757,7 @@ namespace ScreenshotHotkeyTool
             {
                 if (!string.IsNullOrEmpty(resultBox.Text))
                     Clipboard.SetText(resultBox.Text);
-                statusLabel.Text = "已复制到剪贴板";
+                statusLabel.Text = "???????";
             };
 
             formatButton.Click += delegate
@@ -748,34 +766,43 @@ namespace ScreenshotHotkeyTool
                 {
                     resultBox.Text = formattedText;
                     formatRemoved = false;
-                    formatButton.Text = "去格式";
-                    statusLabel.Text = "已复原格式";
+                    formatButton.Text = "???";
+                    statusLabel.Text = "?????";
                 }
                 else
                 {
                     resultBox.Text = RemoveTextFormatting(formattedText);
                     formatRemoved = true;
-                    formatButton.Text = "复原格式";
-                    statusLabel.Text = "已去除格式";
+                    formatButton.Text = "????";
+                    statusLabel.Text = "?????";
                 }
             };
 
             translateToEnglishButton.Click += delegate { TranslateCurrentText("en", translateToEnglishButton, translateToChineseButton); };
             translateToChineseButton.Click += delegate { TranslateCurrentText("zh-CN", translateToChineseButton, translateToEnglishButton); };
+            translationProviderBox.SelectedIndexChanged += delegate
+            {
+                if (translationProviderBox.SelectedItem == null)
+                    return;
+
+                settings.TranslationProvider = Convert.ToString(translationProviderBox.SelectedItem);
+                settings.Save();
+                statusLabel.Text = "??????? " + settings.TranslationProvider;
+            };
 
             saveButton.Click += delegate
             {
                 using (var dialog = new SaveFileDialog())
                 {
-                    dialog.Title = "保存文字";
-                    dialog.FileName = "识别文字_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
-                    dialog.Filter = "文本文件 (*.txt)|*.txt";
+                    dialog.Title = "????";
+                    dialog.FileName = "????_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
+                    dialog.Filter = "???? (*.txt)|*.txt";
                     dialog.DefaultExt = "txt";
                     dialog.AddExtension = true;
                     if (dialog.ShowDialog() == DialogResult.OK)
                     {
                         File.WriteAllText(dialog.FileName, resultBox.Text);
-                        statusLabel.Text = "已保存：" + dialog.FileName;
+                        statusLabel.Text = "????" + dialog.FileName;
                     }
                 }
             };
@@ -788,13 +815,13 @@ namespace ScreenshotHotkeyTool
             var sourceText = resultBox.Text;
             if (string.IsNullOrWhiteSpace(sourceText))
             {
-                statusLabel.Text = "没有可翻译的文字";
+                statusLabel.Text = "????????";
                 return;
             }
 
             primaryButton.Enabled = false;
             secondaryButton.Enabled = false;
-            statusLabel.Text = targetLanguage == "en" ? "正在翻译为英文..." : "正在翻译为中文...";
+            statusLabel.Text = targetLanguage == "en" ? "???????..." : "???????...";
 
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -815,13 +842,13 @@ namespace ScreenshotHotkeyTool
                     secondaryButton.Enabled = true;
                     if (error != null)
                     {
-                        statusLabel.Text = "翻译失败：" + error.Message;
+                        statusLabel.Text = "?????" + error.Message;
                         return;
                     }
 
                     resultBox.Text = translatedText;
                     formatRemoved = false;
-                    statusLabel.Text = targetLanguage == "en" ? "已翻译为英文" : "已翻译为中文";
+                    statusLabel.Text = targetLanguage == "en" ? "??????" : "??????";
                 });
             });
         }
@@ -896,13 +923,13 @@ namespace ScreenshotHotkeyTool
                 }
             }
 
-            throw new InvalidOperationException("无法连接到可用的翻译服务：" + string.Join("；", errors.ToArray()));
+            throw new InvalidOperationException("?????????????" + string.Join("?", errors.ToArray()));
         }
 
         private static string BaiduTranslate(string text, string targetLanguage, HotkeySettings settings)
         {
             if (settings == null || string.IsNullOrWhiteSpace(settings.BaiduAppId) || string.IsNullOrWhiteSpace(settings.BaiduSecretKey))
-                throw new InvalidOperationException("请先在设置里填写百度翻译 App ID 和密钥。");
+                throw new InvalidOperationException("???????????? App ID ????");
 
             var to = targetLanguage == "en" ? "en" : "zh";
             var salt = DateTime.UtcNow.Ticks.ToString();
@@ -972,7 +999,7 @@ namespace ScreenshotHotkeyTool
             var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             var root = serializer.Deserialize<Dictionary<string, object>>(json);
             if (root.ContainsKey("error_code"))
-                throw new InvalidOperationException("百度翻译错误 " + Convert.ToString(root["error_code"]) + "：" + (root.ContainsKey("error_msg") ? Convert.ToString(root["error_msg"]) : ""));
+                throw new InvalidOperationException("?????? " + Convert.ToString(root["error_code"]) + "?" + (root.ContainsKey("error_msg") ? Convert.ToString(root["error_msg"]) : ""));
 
             var result = root.ContainsKey("trans_result") ? root["trans_result"] as System.Collections.ArrayList : null;
             if (result == null)
@@ -1038,7 +1065,7 @@ namespace ScreenshotHotkeyTool
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException("请先安装 Tesseract OCR，或在设置里填写 tesseract.exe 路径。当前错误：" + ex.Message, ex);
+                throw new InvalidOperationException("???? Tesseract OCR???????? tesseract.exe ????????" + ex.Message, ex);
             }
             finally
             {
@@ -1068,17 +1095,17 @@ namespace ScreenshotHotkeyTool
             using (var process = Process.Start(processInfo))
             {
                 if (process == null)
-                    throw new InvalidOperationException("无法启动 OCR 引擎。");
+                    throw new InvalidOperationException("???? OCR ???");
 
                 if (!process.WaitForExit(30000))
                 {
                     try { process.Kill(); } catch { }
-                    throw new TimeoutException("OCR 超时，请缩小截图区域后重试。");
+                    throw new TimeoutException("OCR ??????????????");
                 }
 
                 var error = process.StandardError.ReadToEnd();
                 if (process.ExitCode != 0)
-                    throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "OCR 引擎返回失败。" : error.Trim());
+                    throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "OCR ???????" : error.Trim());
             }
         }
 
@@ -1096,8 +1123,8 @@ namespace ScreenshotHotkeyTool
                 return string.Empty;
 
             var cleaned = Regex.Replace(text, @"(?<=[\u4e00-\u9fff])[\t ]+(?=[\u4e00-\u9fff])", string.Empty);
-            cleaned = Regex.Replace(cleaned, @"(?<=[\u4e00-\u9fff])[\t ]+(?=[，。！？；：、）】》])", string.Empty);
-            cleaned = Regex.Replace(cleaned, @"(?<=[（【《])[\t ]+(?=[\u4e00-\u9fff])", string.Empty);
+            cleaned = Regex.Replace(cleaned, @"(?<=[\u4e00-\u9fff])[\t ]+(?=[??????????])", string.Empty);
+            cleaned = Regex.Replace(cleaned, @"(?<=[???])[\t ]+(?=[\u4e00-\u9fff])", string.Empty);
             return cleaned;
         }
 
@@ -1805,14 +1832,14 @@ namespace ScreenshotHotkeyTool
 
         public SettingsForm(HotkeySettings current)
         {
-            Text = "截图快捷键设置";
+            Text = "???????";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(430, 700);
 
-            var hotkeyTitle = new Label { Text = "截图快捷键", Left = 16, Top = 16, Width = 360 };
+            var hotkeyTitle = new Label { Text = "?????", Left = 16, Top = 16, Width = 360 };
             ctrlBox = new CheckBox { Text = "Ctrl", Left = 18, Top = 44, Width = 70 };
             shiftBox = new CheckBox { Text = "Shift", Left = 90, Top = 44, Width = 70 };
             altBox = new CheckBox { Text = "Alt", Left = 162, Top = 44, Width = 70 };
@@ -1822,22 +1849,22 @@ namespace ScreenshotHotkeyTool
             foreach (var key in HotkeySettings.AllowedKeys)
                 keyBox.Items.Add(key);
 
-            var saveDirectoryLabel = new Label { Text = "截图保存位置", Left = 16, Top = 118, Width = 360 };
+            var saveDirectoryLabel = new Label { Text = "??????", Left = 16, Top = 118, Width = 360 };
             saveDirectoryBox = new TextBox { Left = 18, Top = 144, Width = 305 };
-            var browseButton = new Button { Text = "浏览", Left = 330, Top = 142, Width = 78 };
+            var browseButton = new Button { Text = "??", Left = 330, Top = 142, Width = 78 };
             browseButton.Click += delegate
             {
                 using (var dialog = new FolderBrowserDialog())
                 {
-                    dialog.Description = "选择截图保存位置";
+                    dialog.Description = "????????";
                     dialog.SelectedPath = Directory.Exists(saveDirectoryBox.Text) ? saveDirectoryBox.Text : HotkeySettings.DefaultSaveDirectory();
                     if (dialog.ShowDialog() == DialogResult.OK)
                         saveDirectoryBox.Text = dialog.SelectedPath;
                 }
             };
 
-            var ocrTitle = new Label { Text = "OCR 文字识别", Left = 16, Top = 190, Width = 360 };
-            ocrEnabledBox = new CheckBox { Text = "启用 OCR 快捷键", Left = 18, Top = 216, Width = 180 };
+            var ocrTitle = new Label { Text = "OCR ????", Left = 16, Top = 190, Width = 360 };
+            ocrEnabledBox = new CheckBox { Text = "?? OCR ???", Left = 18, Top = 216, Width = 180 };
             ocrCtrlBox = new CheckBox { Text = "Ctrl", Left = 18, Top = 250, Width = 70 };
             ocrShiftBox = new CheckBox { Text = "Shift", Left = 90, Top = 250, Width = 70 };
             ocrAltBox = new CheckBox { Text = "Alt", Left = 162, Top = 250, Width = 70 };
@@ -1847,39 +1874,39 @@ namespace ScreenshotHotkeyTool
             foreach (var key in HotkeySettings.AllowedKeys)
                 ocrKeyBox.Items.Add(key);
 
-            var ocrLanguageLabel = new Label { Text = "识别语言", Left = 16, Top = 324, Width = 360 };
+            var ocrLanguageLabel = new Label { Text = "????", Left = 16, Top = 324, Width = 360 };
             ocrLanguageBox = new ComboBox { Left = 18, Top = 350, Width = 390, DropDownStyle = ComboBoxStyle.DropDown };
             ocrLanguageBox.Items.Add("chi_sim+eng");
             ocrLanguageBox.Items.Add("eng");
             ocrLanguageBox.Items.Add("chi_sim");
             ocrLanguageBox.Items.Add("chi_tra+eng");
 
-            var ocrEngineLabel = new Label { Text = "Tesseract 路径（可留空）", Left = 16, Top = 390, Width = 360 };
+            var ocrEngineLabel = new Label { Text = "Tesseract ???????", Left = 16, Top = 390, Width = 360 };
             ocrEnginePathBox = new TextBox { Left = 18, Top = 416, Width = 305 };
-            var ocrBrowseButton = new Button { Text = "浏览", Left = 330, Top = 414, Width = 78 };
+            var ocrBrowseButton = new Button { Text = "??", Left = 330, Top = 414, Width = 78 };
             ocrBrowseButton.Click += delegate
             {
                 using (var dialog = new OpenFileDialog())
                 {
-                    dialog.Title = "选择 tesseract.exe";
-                    dialog.Filter = "Tesseract (*.exe)|*.exe|所有文件 (*.*)|*.*";
+                    dialog.Title = "?? tesseract.exe";
+                    dialog.Filter = "Tesseract (*.exe)|*.exe|???? (*.*)|*.*";
                     if (dialog.ShowDialog() == DialogResult.OK)
                         ocrEnginePathBox.Text = dialog.FileName;
                 }
             };
 
-            var translationTitle = new Label { Text = "翻译服务", Left = 16, Top = 462, Width = 360 };
+            var translationTitle = new Label { Text = "????", Left = 16, Top = 462, Width = 360 };
             translationProviderBox = new ComboBox { Left = 18, Top = 488, Width = 390, DropDownStyle = ComboBoxStyle.DropDownList };
             translationProviderBox.Items.Add("Google");
             translationProviderBox.Items.Add("Baidu");
 
-            var baiduAppIdLabel = new Label { Text = "百度翻译 App ID", Left = 16, Top = 526, Width = 360 };
+            var baiduAppIdLabel = new Label { Text = "???? App ID", Left = 16, Top = 526, Width = 360 };
             baiduAppIdBox = new TextBox { Left = 18, Top = 552, Width = 390 };
-            var baiduSecretLabel = new Label { Text = "百度翻译密钥", Left = 16, Top = 584, Width = 360 };
+            var baiduSecretLabel = new Label { Text = "??????", Left = 16, Top = 584, Width = 360 };
             baiduSecretKeyBox = new TextBox { Left = 18, Top = 610, Width = 390, UseSystemPasswordChar = true };
 
-            saveButton = new Button { Text = "保存", Left = 250, Top = 654, Width = 76, DialogResult = DialogResult.OK };
-            cancelButton = new Button { Text = "取消", Left = 332, Top = 654, Width = 76, DialogResult = DialogResult.Cancel };
+            saveButton = new Button { Text = "??", Left = 250, Top = 654, Width = 76, DialogResult = DialogResult.OK };
+            cancelButton = new Button { Text = "??", Left = 332, Top = 654, Width = 76, DialogResult = DialogResult.Cancel };
 
             Controls.Add(hotkeyTitle);
             Controls.Add(ctrlBox);
@@ -1943,13 +1970,13 @@ namespace ScreenshotHotkeyTool
                 var selected = BuildSettings();
                 if (!selected.HasModifier)
                 {
-                    MessageBox.Show("请至少选择一个组合键：Ctrl、Shift、Alt 或 Win。", "截图快捷键");
+                    MessageBox.Show("???????????Ctrl?Shift?Alt ? Win?", "?????");
                     DialogResult = DialogResult.None;
                     return;
                 }
                 if (selected.OcrEnabled && !selected.HasOcrModifier)
                 {
-                    MessageBox.Show("请至少选择一个 OCR 组合键：Ctrl、Shift、Alt 或 Win。", "截图快捷键");
+                    MessageBox.Show("??????? OCR ????Ctrl?Shift?Alt ? Win?", "?????");
                     DialogResult = DialogResult.None;
                     return;
                 }
@@ -1960,7 +1987,7 @@ namespace ScreenshotHotkeyTool
                 }
                 catch
                 {
-                    MessageBox.Show("保存位置不可用，请换一个文件夹。", "截图快捷键");
+                    MessageBox.Show("????????????????", "?????");
                     DialogResult = DialogResult.None;
                     return;
                 }
@@ -2056,7 +2083,7 @@ namespace ScreenshotHotkeyTool
         {
             get
             {
-                return OcrEnabled ? DisplayTextFor(OcrModifiers, OcrKeyCode) : "未启用";
+                return OcrEnabled ? DisplayTextFor(OcrModifiers, OcrKeyCode) : "???";
             }
         }
 

@@ -39,6 +39,22 @@ if ($source -notmatch 'BaiduSecretKey') {
     throw 'Settings should include Baidu Secret Key.'
 }
 
+if ($source -notmatch 'translationProviderBox') {
+    throw 'OCR result window should expose a translation provider selector.'
+}
+
+if ($source -notmatch 'translationProviderLabel') {
+    throw 'OCR result window should label the translation provider selector.'
+}
+
+if ($source -notmatch 'settings\.TranslationProvider = Convert\.ToString\(translationProviderBox\.SelectedItem\)') {
+    throw 'Changing the OCR result translation provider should update settings.'
+}
+
+if ($source -notmatch 'settings\.Save\(\)') {
+    throw 'Changing the OCR result translation provider should persist the choice.'
+}
+
 if ($source -notmatch 'TimeoutWebClient') {
     throw 'Translation requests should use a timeout instead of hanging.'
 }
