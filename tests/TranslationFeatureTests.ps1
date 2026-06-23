@@ -23,6 +23,22 @@ if ($source -notmatch 'clients5.google.com') {
     throw 'Translation runner should try a fallback translation endpoint.'
 }
 
+if ($source -notmatch 'BaiduTranslate') {
+    throw 'Translation runner should support Baidu Translate for computers that cannot access Google.'
+}
+
+if ($source -notmatch 'TranslationProvider') {
+    throw 'Settings should include a translation provider.'
+}
+
+if ($source -notmatch 'BaiduAppId') {
+    throw 'Settings should include Baidu App ID.'
+}
+
+if ($source -notmatch 'BaiduSecretKey') {
+    throw 'Settings should include Baidu Secret Key.'
+}
+
 if ($source -notmatch 'TimeoutWebClient') {
     throw 'Translation requests should use a timeout instead of hanging.'
 }
@@ -47,7 +63,7 @@ if ($source -match 'foreach\s*\(var line in lines\)[\s\S]*Translate\(line, targe
     throw 'Translation should not call the network once per line.'
 }
 
-if ($source -notmatch 'Translate\(normalized, targetLanguage\)') {
+if ($source -notmatch 'GoogleTranslate\(normalized, targetLanguage\)') {
     throw 'Translation should send normalized text in a single request.'
 }
 

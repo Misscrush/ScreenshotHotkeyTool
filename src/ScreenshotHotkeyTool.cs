@@ -7,6 +7,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -200,7 +201,7 @@ namespace ScreenshotHotkeyTool
         private void SaveCapturedImage(Bitmap image)
         {
             isCapturing = false;
-            var preview = new PreviewForm(image, SaveBitmap, RecognizeText);
+            var preview = new PreviewForm(image, SaveBitmap, RecognizeText, settings);
             preview.Show();
         }
 
@@ -210,7 +211,7 @@ namespace ScreenshotHotkeyTool
             try
             {
                 var text = RecognizeText(image);
-                var result = new OcrResultForm(text);
+                var result = new OcrResultForm(text, settings);
                 result.Show();
             }
             finally
@@ -430,16 +431,18 @@ namespace ScreenshotHotkeyTool
         private readonly Func<Bitmap, string> recognizeText;
         private readonly ImageCanvasControl canvas;
         private readonly Bitmap originalImage;
+        private readonly HotkeySettings settings;
         private readonly Button drawButton;
         private readonly Button rectangleButton;
         private readonly Button textButton;
         private readonly Button arrowButton;
         private readonly Label statusLabel;
 
-        public PreviewForm(Bitmap image, Func<Bitmap, string> saveImage, Func<Bitmap, string> recognizeText)
+        public PreviewForm(Bitmap image, Func<Bitmap, string> saveImage, Func<Bitmap, string> recognizeText, HotkeySettings settings)
         {
             this.saveImage = saveImage;
             this.recognizeText = recognizeText;
+            this.settings = settings ?? HotkeySettings.Default();
             originalImage = (Bitmap)image.Clone();
 
             Text = "截图预览";
@@ -518,7 +521,7 @@ namespace ScreenshotHotkeyTool
 
             ocrButton.Click += delegate
             {
-                var result = new OcrResultForm(RecognizeImages(canvas.GetImagesForOcr(originalImage)));
+                var result = new OcrResultForm(RecognizeImages(canvas.GetImagesForOcr(originalImage)), settings);
                 result.Show();
                 statusLabel.Text = canvas.HasRectangleSelection ? "已识别全部框选区域" : "已识别整张截图";
             };
@@ -665,11 +668,13 @@ namespace ScreenshotHotkeyTool
         private readonly TextBox resultBox;
         private readonly Label statusLabel;
         private readonly string formattedText;
+        private readonly HotkeySettings settings;
         private bool formatRemoved;
 
-        public OcrResultForm(string text)
+        public OcrResultForm(string text, HotkeySettings settings)
         {
             formattedText = text ?? string.Empty;
+            this.settings = settings ?? HotkeySettings.Default();
             Text = "文字识别结果";
             AutoScaleMode = AutoScaleMode.None;
             StartPosition = FormStartPosition.CenterScreen;
@@ -797,7 +802,7 @@ namespace ScreenshotHotkeyTool
                 Exception error = null;
                 try
                 {
-                    translatedText = TranslationRunner.TranslatePreservingLines(sourceText, targetLanguage);
+                    translatedText = TranslationRunner.TranslatePreservingLines(sourceText, targetLanguage, settings);
                 }
                 catch (Exception ex)
                 {
@@ -835,20 +840,23 @@ namespace ScreenshotHotkeyTool
         private static readonly Dictionary<string, string> translationCache = new Dictionary<string, string>();
         private static readonly object cacheLock = new object();
 
-        public static string TranslatePreservingLines(string text, string targetLanguage)
+        public static string TranslatePreservingLines(string text, string targetLanguage, HotkeySettings settings)
         {
             if (string.IsNullOrWhiteSpace(text))
                 return string.Empty;
 
             var normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
-            var cacheKey = targetLanguage + "|" + normalized;
+            var provider = settings == null || string.IsNullOrWhiteSpace(settings.TranslationProvider) ? "Google" : settings.TranslationProvider;
+            var cacheKey = provider + "|" + targetLanguage + "|" + normalized;
             lock (cacheLock)
             {
                 if (translationCache.ContainsKey(cacheKey))
                     return translationCache[cacheKey];
             }
 
-            var translated = Translate(normalized, targetLanguage);
+            var translated = string.Equals(provider, "Baidu", StringComparison.OrdinalIgnoreCase)
+                ? BaiduTranslate(normalized, targetLanguage, settings)
+                : GoogleTranslate(normalized, targetLanguage);
             translated = translated.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", Environment.NewLine);
             lock (cacheLock)
             {
@@ -857,7 +865,7 @@ namespace ScreenshotHotkeyTool
             return translated;
         }
 
-        private static string Translate(string text, string targetLanguage)
+        private static string GoogleTranslate(string text, string targetLanguage)
         {
             try
             {
@@ -889,6 +897,30 @@ namespace ScreenshotHotkeyTool
             }
 
             throw new InvalidOperationException("无法连接到可用的翻译服务：" + string.Join("；", errors.ToArray()));
+        }
+
+        private static string BaiduTranslate(string text, string targetLanguage, HotkeySettings settings)
+        {
+            if (settings == null || string.IsNullOrWhiteSpace(settings.BaiduAppId) || string.IsNullOrWhiteSpace(settings.BaiduSecretKey))
+                throw new InvalidOperationException("请先在设置里填写百度翻译 App ID 和密钥。");
+
+            var to = targetLanguage == "en" ? "en" : "zh";
+            var salt = DateTime.UtcNow.Ticks.ToString();
+            var sign = Md5(settings.BaiduAppId + text + salt + settings.BaiduSecretKey);
+            var body = "q=" + Uri.EscapeDataString(text)
+                + "&from=auto"
+                + "&to=" + Uri.EscapeDataString(to)
+                + "&appid=" + Uri.EscapeDataString(settings.BaiduAppId)
+                + "&salt=" + Uri.EscapeDataString(salt)
+                + "&sign=" + Uri.EscapeDataString(sign);
+
+            using (var client = new TimeoutWebClient())
+            {
+                client.Encoding = Encoding.UTF8;
+                client.Headers[HttpRequestHeader.ContentType] = "application/x-www-form-urlencoded";
+                var json = client.UploadString("https://fanyi-api.baidu.com/api/trans/vip/translate", body);
+                return ParseBaiduTranslateResult(json);
+            }
         }
 
         private static IEnumerable<string> BuildTranslateUrls(string text, string targetLanguage)
@@ -933,6 +965,43 @@ namespace ScreenshotHotkeyTool
             }
 
             return builder.ToString();
+        }
+
+        private static string ParseBaiduTranslateResult(string json)
+        {
+            var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            var root = serializer.Deserialize<Dictionary<string, object>>(json);
+            if (root.ContainsKey("error_code"))
+                throw new InvalidOperationException("百度翻译错误 " + Convert.ToString(root["error_code"]) + "：" + (root.ContainsKey("error_msg") ? Convert.ToString(root["error_msg"]) : ""));
+
+            var result = root.ContainsKey("trans_result") ? root["trans_result"] as System.Collections.ArrayList : null;
+            if (result == null)
+                return string.Empty;
+
+            var builder = new StringBuilder();
+            foreach (var item in result)
+            {
+                var dict = item as Dictionary<string, object>;
+                if (dict != null && dict.ContainsKey("dst"))
+                {
+                    if (builder.Length > 0)
+                        builder.AppendLine();
+                    builder.Append(Convert.ToString(dict["dst"]));
+                }
+            }
+            return builder.ToString();
+        }
+
+        private static string Md5(string value)
+        {
+            using (var md5 = MD5.Create())
+            {
+                var bytes = md5.ComputeHash(Encoding.UTF8.GetBytes(value));
+                var builder = new StringBuilder();
+                foreach (var b in bytes)
+                    builder.Append(b.ToString("x2"));
+                return builder.ToString();
+            }
         }
     }
 
@@ -1725,6 +1794,9 @@ namespace ScreenshotHotkeyTool
         private readonly ComboBox ocrKeyBox;
         private readonly ComboBox ocrLanguageBox;
         private readonly TextBox ocrEnginePathBox;
+        private readonly ComboBox translationProviderBox;
+        private readonly TextBox baiduAppIdBox;
+        private readonly TextBox baiduSecretKeyBox;
         private readonly TextBox saveDirectoryBox;
         private readonly Button saveButton;
         private readonly Button cancelButton;
@@ -1738,7 +1810,7 @@ namespace ScreenshotHotkeyTool
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(430, 520);
+            ClientSize = new Size(430, 700);
 
             var hotkeyTitle = new Label { Text = "截图快捷键", Left = 16, Top = 16, Width = 360 };
             ctrlBox = new CheckBox { Text = "Ctrl", Left = 18, Top = 44, Width = 70 };
@@ -1796,8 +1868,18 @@ namespace ScreenshotHotkeyTool
                 }
             };
 
-            saveButton = new Button { Text = "保存", Left = 250, Top = 474, Width = 76, DialogResult = DialogResult.OK };
-            cancelButton = new Button { Text = "取消", Left = 332, Top = 474, Width = 76, DialogResult = DialogResult.Cancel };
+            var translationTitle = new Label { Text = "翻译服务", Left = 16, Top = 462, Width = 360 };
+            translationProviderBox = new ComboBox { Left = 18, Top = 488, Width = 390, DropDownStyle = ComboBoxStyle.DropDownList };
+            translationProviderBox.Items.Add("Google");
+            translationProviderBox.Items.Add("Baidu");
+
+            var baiduAppIdLabel = new Label { Text = "百度翻译 App ID", Left = 16, Top = 526, Width = 360 };
+            baiduAppIdBox = new TextBox { Left = 18, Top = 552, Width = 390 };
+            var baiduSecretLabel = new Label { Text = "百度翻译密钥", Left = 16, Top = 584, Width = 360 };
+            baiduSecretKeyBox = new TextBox { Left = 18, Top = 610, Width = 390, UseSystemPasswordChar = true };
+
+            saveButton = new Button { Text = "保存", Left = 250, Top = 654, Width = 76, DialogResult = DialogResult.OK };
+            cancelButton = new Button { Text = "取消", Left = 332, Top = 654, Width = 76, DialogResult = DialogResult.Cancel };
 
             Controls.Add(hotkeyTitle);
             Controls.Add(ctrlBox);
@@ -1820,6 +1902,12 @@ namespace ScreenshotHotkeyTool
             Controls.Add(ocrEngineLabel);
             Controls.Add(ocrEnginePathBox);
             Controls.Add(ocrBrowseButton);
+            Controls.Add(translationTitle);
+            Controls.Add(translationProviderBox);
+            Controls.Add(baiduAppIdLabel);
+            Controls.Add(baiduAppIdBox);
+            Controls.Add(baiduSecretLabel);
+            Controls.Add(baiduSecretKeyBox);
             Controls.Add(saveButton);
             Controls.Add(cancelButton);
 
@@ -1844,6 +1932,11 @@ namespace ScreenshotHotkeyTool
                 ocrKeyBox.SelectedItem = "T";
             ocrLanguageBox.Text = string.IsNullOrWhiteSpace(current.OcrLanguage) ? "chi_sim+eng" : current.OcrLanguage;
             ocrEnginePathBox.Text = current.OcrEnginePath ?? string.Empty;
+            translationProviderBox.SelectedItem = string.IsNullOrWhiteSpace(current.TranslationProvider) ? "Google" : current.TranslationProvider;
+            if (translationProviderBox.SelectedIndex < 0)
+                translationProviderBox.SelectedItem = "Google";
+            baiduAppIdBox.Text = current.BaiduAppId ?? string.Empty;
+            baiduSecretKeyBox.Text = current.BaiduSecretKey ?? string.Empty;
 
             saveButton.Click += delegate
             {
@@ -1908,7 +2001,10 @@ namespace ScreenshotHotkeyTool
                 OcrModifiers = ocrModifiers,
                 OcrKeyCode = HotkeySettings.KeyCodeFromName((string)ocrKeyBox.SelectedItem),
                 OcrLanguage = string.IsNullOrWhiteSpace(ocrLanguageBox.Text) ? "chi_sim+eng" : ocrLanguageBox.Text.Trim(),
-                OcrEnginePath = string.IsNullOrWhiteSpace(ocrEnginePathBox.Text) ? string.Empty : ocrEnginePathBox.Text.Trim()
+                OcrEnginePath = string.IsNullOrWhiteSpace(ocrEnginePathBox.Text) ? string.Empty : ocrEnginePathBox.Text.Trim(),
+                TranslationProvider = translationProviderBox.SelectedItem == null ? "Google" : Convert.ToString(translationProviderBox.SelectedItem),
+                BaiduAppId = string.IsNullOrWhiteSpace(baiduAppIdBox.Text) ? string.Empty : baiduAppIdBox.Text.Trim(),
+                BaiduSecretKey = string.IsNullOrWhiteSpace(baiduSecretKeyBox.Text) ? string.Empty : baiduSecretKeyBox.Text.Trim()
             };
         }
     }
@@ -1934,6 +2030,9 @@ namespace ScreenshotHotkeyTool
         public uint OcrKeyCode { get; set; }
         public string OcrLanguage { get; set; }
         public string OcrEnginePath { get; set; }
+        public string TranslationProvider { get; set; }
+        public string BaiduAppId { get; set; }
+        public string BaiduSecretKey { get; set; }
 
         public bool HasModifier
         {
@@ -1973,7 +2072,10 @@ namespace ScreenshotHotkeyTool
                 OcrModifiers = HotkeyModifiers.Control | HotkeyModifiers.Shift,
                 OcrKeyCode = KeyCodeFromName("T"),
                 OcrLanguage = "chi_sim+eng",
-                OcrEnginePath = string.Empty
+                OcrEnginePath = string.Empty,
+                TranslationProvider = "Google",
+                BaiduAppId = string.Empty,
+                BaiduSecretKey = string.Empty
             };
         }
 
@@ -2003,13 +2105,18 @@ namespace ScreenshotHotkeyTool
                     OcrModifiers = data.ContainsKey("ocrModifiers") ? (HotkeyModifiers)Convert.ToUInt32(data["ocrModifiers"]) : defaults.OcrModifiers,
                     OcrKeyCode = data.ContainsKey("ocrKeyCode") ? Convert.ToUInt32(data["ocrKeyCode"]) : defaults.OcrKeyCode,
                     OcrLanguage = data.ContainsKey("ocrLanguage") ? Convert.ToString(data["ocrLanguage"]) : defaults.OcrLanguage,
-                    OcrEnginePath = data.ContainsKey("ocrEnginePath") ? Convert.ToString(data["ocrEnginePath"]) : defaults.OcrEnginePath
+                    OcrEnginePath = data.ContainsKey("ocrEnginePath") ? Convert.ToString(data["ocrEnginePath"]) : defaults.OcrEnginePath,
+                    TranslationProvider = data.ContainsKey("translationProvider") ? Convert.ToString(data["translationProvider"]) : defaults.TranslationProvider,
+                    BaiduAppId = data.ContainsKey("baiduAppId") ? Convert.ToString(data["baiduAppId"]) : defaults.BaiduAppId,
+                    BaiduSecretKey = data.ContainsKey("baiduSecretKey") ? Convert.ToString(data["baiduSecretKey"]) : defaults.BaiduSecretKey
                 };
 
                 if (string.IsNullOrWhiteSpace(loaded.SaveDirectory))
                     loaded.SaveDirectory = DefaultSaveDirectory();
                 if (string.IsNullOrWhiteSpace(loaded.OcrLanguage))
                     loaded.OcrLanguage = defaults.OcrLanguage;
+                if (string.IsNullOrWhiteSpace(loaded.TranslationProvider))
+                    loaded.TranslationProvider = defaults.TranslationProvider;
                 return loaded;
             }
             catch
@@ -2033,7 +2140,10 @@ namespace ScreenshotHotkeyTool
                 { "ocrKeyCode", OcrKeyCode },
                 { "ocrDisplayText", OcrDisplayText },
                 { "ocrLanguage", OcrLanguage },
-                { "ocrEnginePath", OcrEnginePath }
+                { "ocrEnginePath", OcrEnginePath },
+                { "translationProvider", TranslationProvider },
+                { "baiduAppId", BaiduAppId },
+                { "baiduSecretKey", BaiduSecretKey }
             };
             File.WriteAllText(SettingsPath(), serializer.Serialize(data));
         }

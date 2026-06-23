@@ -101,6 +101,8 @@ C:\Program Files\Tesseract-OCR\tesseract.exe
 
 如果某个翻译接口连接失败，工具会自动尝试备用接口；如果全部不可用，会在结果窗口顶部显示失败原因。
 
+如果电脑不能访问 Google，可以右键托盘图标进入“设置”，把“翻译服务”切换为 `Baidu`，并填写百度翻译开放平台的 App ID 和密钥。
+
 ### 截图后识别文字
 
 1. 按 `Ctrl + Shift + R` 截图。
@@ -141,6 +143,8 @@ C:\Program Files\Tesseract-OCR\tesseract.exe
 - 开启/关闭 OCR 快捷键。
 - 设置 OCR 语言。
 - 指定 `tesseract.exe` 路径。
+- 设置翻译服务：`Google` 或 `Baidu`。
+- 使用百度翻译时，填写百度翻译 App ID 和密钥。
 - 修改截图默认保存目录。
 
 配置保存在程序目录下的 `settings.json`。仓库提供 `settings.example.json` 作为示例。

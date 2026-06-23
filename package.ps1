@@ -25,7 +25,7 @@ Copy-Item -LiteralPath (Join-Path $root 'CHANGELOG.md') -Destination $packageRoo
 Copy-Item -LiteralPath (Join-Path $root 'settings.example.json') -Destination $packageRoot -Force
 Copy-Item -LiteralPath (Join-Path $root 'tessdata') -Destination (Join-Path $packageRoot 'tessdata') -Recurse -Force
 
-$settings = '{"modifiers":6,"keyCode":82,"displayText":"Ctrl + Shift + R","saveScreenshot":true,"saveDirectory":"captures","ocrEnabled":true,"ocrModifiers":6,"ocrKeyCode":84,"ocrDisplayText":"Ctrl + Shift + T","ocrLanguage":"chi_sim+eng","ocrEnginePath":""}'
+$settings = '{"modifiers":6,"keyCode":82,"displayText":"Ctrl + Shift + R","saveScreenshot":true,"saveDirectory":"captures","ocrEnabled":true,"ocrModifiers":6,"ocrKeyCode":84,"ocrDisplayText":"Ctrl + Shift + T","ocrLanguage":"chi_sim+eng","ocrEnginePath":"","translationProvider":"Google","baiduAppId":"","baiduSecretKey":""}'
 Set-Content -LiteralPath (Join-Path $packageRoot 'settings.json') -Encoding UTF8 -Value $settings
 
 $bundledTesseract = Join-Path $packageRoot 'Tesseract-OCR'

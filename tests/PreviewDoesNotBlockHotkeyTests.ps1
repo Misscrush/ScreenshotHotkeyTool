@@ -7,7 +7,7 @@ if ($source -match 'using \(var preview = new PreviewForm\(image, SaveBitmap\)\)
     throw 'Preview should not be shown modally, otherwise the hotkey stays blocked until preview is closed.'
 }
 
-if ($source -notmatch 'isCapturing = false;\s*var preview = new PreviewForm\(image, SaveBitmap, RecognizeText\);\s*preview\.Show\(\);') {
+if ($source -notmatch 'isCapturing = false;\s*var preview = new PreviewForm\(image, SaveBitmap, RecognizeText, settings\);\s*preview\.Show\(\);') {
     throw 'SaveCapturedImage should release capture state before showing a modeless preview.'
 }
 
