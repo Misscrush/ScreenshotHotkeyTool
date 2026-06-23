@@ -867,17 +867,46 @@ namespace ScreenshotHotkeyTool
             {
             }
 
-            var url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl="
-                + Uri.EscapeDataString(targetLanguage)
-                + "&dt=t&q="
-                + Uri.EscapeDataString(text);
-
-            using (var client = new WebClient())
+            var errors = new List<string>();
+            foreach (var url in BuildTranslateUrls(text, targetLanguage))
             {
-                client.Encoding = Encoding.UTF8;
-                client.Headers.Add("User-Agent", "ScreenshotHotkeyTool");
-                var json = client.DownloadString(url);
-                return ParseGoogleTranslateResult(json);
+                try
+                {
+                    using (var client = new TimeoutWebClient())
+                    {
+                        client.Encoding = Encoding.UTF8;
+                        client.Headers.Add("User-Agent", "Mozilla/5.0 ScreenshotHotkeyTool");
+                        var json = client.DownloadString(url);
+                        var translated = ParseGoogleTranslateResult(json);
+                        if (!string.IsNullOrWhiteSpace(translated))
+                            return translated;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errors.Add(ex.Message);
+                }
+            }
+
+            throw new InvalidOperationException("无法连接到可用的翻译服务：" + string.Join("；", errors.ToArray()));
+        }
+
+        private static IEnumerable<string> BuildTranslateUrls(string text, string targetLanguage)
+        {
+            var target = Uri.EscapeDataString(targetLanguage);
+            var query = Uri.EscapeDataString(text);
+            yield return "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=" + target + "&dt=t&q=" + query;
+            yield return "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=" + target + "&q=" + query;
+            yield return "https://translate.google.com/translate_a/single?client=gtx&sl=auto&tl=" + target + "&dt=t&q=" + query;
+        }
+
+        private sealed class TimeoutWebClient : WebClient
+        {
+            protected override WebRequest GetWebRequest(Uri address)
+            {
+                var request = base.GetWebRequest(address);
+                request.Timeout = 8000;
+                return request;
             }
         }
 
@@ -891,6 +920,9 @@ namespace ScreenshotHotkeyTool
             var sentences = root[0] as object[];
             if (sentences == null)
                 return string.Empty;
+
+            if (sentences.Length > 0 && sentences[0] is string)
+                return Convert.ToString(sentences[0]);
 
             var builder = new StringBuilder();
             foreach (var item in sentences)

@@ -19,6 +19,18 @@ if ($source -notmatch 'translate.googleapis.com') {
     throw 'Translation runner should call a translation endpoint.'
 }
 
+if ($source -notmatch 'clients5.google.com') {
+    throw 'Translation runner should try a fallback translation endpoint.'
+}
+
+if ($source -notmatch 'TimeoutWebClient') {
+    throw 'Translation requests should use a timeout instead of hanging.'
+}
+
+if ($source -notmatch 'BuildTranslateUrls') {
+    throw 'Translation endpoints should be built in one place.'
+}
+
 if ($source -notmatch 'TranslateCurrentText') {
     throw 'OCR result window should use a shared translation handler.'
 }
