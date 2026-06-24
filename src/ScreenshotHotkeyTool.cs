@@ -1049,7 +1049,10 @@ namespace ScreenshotHotkeyTool
 
             try
             {
-                image.Save(inputPath, ImageFormat.Png);
+                using (var preparedImage = PrepareImageForOcr(image))
+                {
+                    preparedImage.Save(inputPath, ImageFormat.Png);
+                }
                 RunTesseract(enginePath, inputPath, outputBasePath, language, tessdataDirectory, "tsv");
 
                 var formattedText = ReadTsvOutput(outputTsvPath);
@@ -1077,7 +1080,7 @@ namespace ScreenshotHotkeyTool
 
         private static void RunTesseract(string enginePath, string inputPath, string outputBasePath, string language, string tessdataDirectory, string outputFormat)
         {
-            var arguments = Quote(inputPath) + " " + Quote(outputBasePath) + " -l " + language + TessdataArgument(tessdataDirectory) + " -c preserve_interword_spaces=1";
+            var arguments = Quote(inputPath) + " " + Quote(outputBasePath) + " -l " + language + " --oem 1 --psm 6 --dpi 300" + TessdataArgument(tessdataDirectory) + " -c preserve_interword_spaces=1";
             if (string.Equals(outputFormat, "tsv", StringComparison.OrdinalIgnoreCase))
                 arguments += " -c tessedit_create_tsv=1";
             else if (!string.IsNullOrWhiteSpace(outputFormat))
@@ -1107,6 +1110,87 @@ namespace ScreenshotHotkeyTool
                 if (process.ExitCode != 0)
                     throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "OCR ???????" : error.Trim());
             }
+        }
+
+        private static Bitmap PrepareImageForOcr(Bitmap image)
+        {
+            var scale = CalculateOcrScale(image.Width, image.Height);
+            var width = Math.Max(1, (int)Math.Round(image.Width * scale));
+            var height = Math.Max(1, (int)Math.Round(image.Height * scale));
+            var prepared = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+            prepared.SetResolution(300, 300);
+
+            using (var graphics = Graphics.FromImage(prepared))
+            {
+                graphics.Clear(Color.White);
+                graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                graphics.SmoothingMode = SmoothingMode.HighQuality;
+                graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                graphics.CompositingQuality = CompositingQuality.HighQuality;
+                graphics.DrawImage(image, new Rectangle(0, 0, width, height), new Rectangle(0, 0, image.Width, image.Height), GraphicsUnit.Pixel);
+            }
+
+            ApplyContrastForOcr(prepared);
+            return prepared;
+        }
+
+        private static double CalculateOcrScale(int width, int height)
+        {
+            var largestSide = Math.Max(width, height);
+            if (largestSide <= 0)
+                return 2.0;
+
+            return Math.Max(1.0, Math.Min(2.0, 5000.0 / largestSide));
+        }
+
+        private static void ApplyContrastForOcr(Bitmap image)
+        {
+            var rectangle = new Rectangle(0, 0, image.Width, image.Height);
+            var data = image.LockBits(rectangle, ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
+            try
+            {
+                var stride = data.Stride;
+                var bytes = Math.Abs(stride) * image.Height;
+                var buffer = new byte[bytes];
+                Marshal.Copy(data.Scan0, buffer, 0, bytes);
+
+                for (var y = 0; y < image.Height; y++)
+                {
+                    var row = y * stride;
+                    for (var x = 0; x < image.Width; x++)
+                    {
+                        var index = row + x * 3;
+                        var blue = buffer[index];
+                        var green = buffer[index + 1];
+                        var red = buffer[index + 2];
+                        var luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+                        var contrasted = ClampToByte((int)Math.Round((luminance - 128) * 1.45 + 128));
+                        if (contrasted > 242)
+                            contrasted = 255;
+                        else if (contrasted < 35)
+                            contrasted = 0;
+
+                        buffer[index] = contrasted;
+                        buffer[index + 1] = contrasted;
+                        buffer[index + 2] = contrasted;
+                    }
+                }
+
+                Marshal.Copy(buffer, 0, data.Scan0, bytes);
+            }
+            finally
+            {
+                image.UnlockBits(data);
+            }
+        }
+
+        private static byte ClampToByte(int value)
+        {
+            if (value < 0)
+                return 0;
+            if (value > 255)
+                return 255;
+            return (byte)value;
         }
 
         private static string ReadTsvOutput(string outputTsvPath)
