@@ -11,6 +11,17 @@ if ($source -notmatch 'translateToChineseButton') {
     throw 'OCR result window should include a translate-to-Chinese button.'
 }
 
+$toChineseLabel = ([char]0x8F6C).ToString() + ([char]0x4E2D).ToString() + ([char]0x6587).ToString()
+$toEnglishLabel = ([char]0x8F6C).ToString() + ([char]0x82F1).ToString() + ([char]0x6587).ToString()
+
+if ($source -notmatch [Regex]::Escape($toChineseLabel)) {
+    throw 'English OCR text should have a clear translate-to-Chinese button label.'
+}
+
+if ($source -notmatch [Regex]::Escape($toEnglishLabel)) {
+    throw 'Chinese OCR text should have a clear translate-to-English button label.'
+}
+
 if ($source -notmatch 'internal static class TranslationRunner') {
     throw 'Translation logic should be isolated in TranslationRunner.'
 }
@@ -65,6 +76,22 @@ if ($source -notmatch 'BuildTranslateUrls') {
 
 if ($source -notmatch 'TranslateCurrentText') {
     throw 'OCR result window should use a shared translation handler.'
+}
+
+if ($source -notmatch 'showingTranslation') {
+    throw 'OCR result window should track whether it is currently showing translated text.'
+}
+
+if ($source -notmatch 'textBeforeTranslation') {
+    throw 'OCR result window should keep the source text so clicking translate again can restore it.'
+}
+
+if ($source -notmatch 'RestoreOriginalText') {
+    throw 'OCR result window should restore the original text when a translation button is clicked again.'
+}
+
+if ($source -notmatch 'SetTranslationButtonLabels') {
+    throw 'Translation buttons should switch between translate and restore labels.'
 }
 
 if ($source -notmatch 'TranslatePreservingLines') {

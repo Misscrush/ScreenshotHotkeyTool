@@ -1,0 +1,182 @@
+$ErrorActionPreference = 'Stop'
+
+$root = Split-Path -Parent $PSScriptRoot
+$source = Get-Content -LiteralPath (Join-Path $root 'src\ScreenshotHotkeyTool.cs') -Raw -Encoding UTF8
+
+if ($source -notmatch 'StartScreenshotEditorSelection') {
+    throw 'Screenshot hotkey should start the inline editor selection flow.'
+}
+
+if ($source -notmatch 'private void TriggerOcr\(\)[\s\S]*StartScreenshotEditorSelection\(true\);') {
+    throw 'OCR hotkey should use the same inline editor flow as screenshot capture.'
+}
+
+if ($source -notmatch 'private void TriggerSnip\(\)[\s\S]*StartScreenshotEditorSelection\(false\);') {
+    throw 'Screenshot hotkey should start the inline editor without immediate OCR.'
+}
+
+if ($source -match 'private void TriggerOcr\(\)[\s\S]*StartSelection\(RecognizeCapturedImage\);') {
+    throw 'OCR hotkey should not use the old direct-recognition overlay flow.'
+}
+
+if ($source -notmatch 'new SelectionOverlayForm\(bounds, screenshot, SaveBitmap, RecognizeText, settings, recognizeImmediately\)') {
+    throw 'Screenshot selection should open the overlay in inline editing mode.'
+}
+
+if ($source -notmatch 'BeginInlineEditing') {
+    throw 'Selection overlay should switch into inline editing after a screenshot region is selected.'
+}
+
+if ($source -notmatch 'SwitchToFloatingEditorWindow') {
+    throw 'Selected screenshot should switch from the full-screen overlay into a floating editor window.'
+}
+
+if ($source -notmatch 'BackColor = TransparentEditorColor[\s\S]*TransparencyKey = TransparentEditorColor') {
+    throw 'Floating editor background should be transparent while controls remain visible.'
+}
+
+if ($source -notmatch 'TopMost = true') {
+    throw 'Floating editor should stay above the current desktop window while editing.'
+}
+
+if ($source -notmatch 'selection\.Height \+ toolbarReserve') {
+    throw 'Floating editor should resize to a small window around the captured image and toolbar.'
+}
+
+if ($source -notmatch 'Region = null') {
+    throw 'Floating editor should avoid region clipping so OCR text remains visible.'
+}
+
+if ($source -notmatch 'DrawFloatingScreenshotBorder') {
+    throw 'Floating screenshot should draw a visible border around the captured image.'
+}
+
+if ($source -notmatch 'new Pen\(Color\.Black, 2\)') {
+    throw 'Floating screenshot border should include a black outline.'
+}
+
+if ($source -notmatch 'ShowEditorToolbars') {
+    throw 'Clicking the floating screenshot should show screenshot actions.'
+}
+
+if ($source -notmatch 'selectedBounds\.Contains\(e\.Location\)[\s\S]*BeginMoveSelectedImage\(this, e\)') {
+    throw 'Parent floating overlay should also handle clicks on the screenshot area.'
+}
+
+if ($source -notmatch 'CreateEditorToolbar') {
+    throw 'Inline screenshot editor should create a floating toolbar.'
+}
+
+if ($source -notmatch 'CreateStyleToolbar') {
+    throw 'Inline screenshot editor should create a secondary style toolbar.'
+}
+
+if ($source -notmatch 'ToolTip') {
+    throw 'Inline screenshot editor should create tooltips for toolbar icons.'
+}
+
+if ($source -notmatch 'SetToolTip\(button, tip\)') {
+    throw 'Toolbar icon buttons should show their function name on hover.'
+}
+
+if ($source -notmatch 'toolTip\.Dispose\(\)') {
+    throw 'Toolbar tooltip should be disposed with the overlay.'
+}
+
+if ($source -notmatch 'AnnotationMode\.Number') {
+    throw 'Inline screenshot editor should include numbered callout annotations.'
+}
+
+if ($source -notmatch 'AnnotationMode\.Mosaic') {
+    throw 'Inline screenshot editor should include mosaic redaction.'
+}
+
+if ($source -notmatch 'Clipboard\.SetImage\(\(Bitmap\)editorCanvas\.Image\.Clone\(\)\)') {
+    throw 'Inline editor done action should copy the edited screenshot to the clipboard.'
+}
+
+if ($source -notmatch 'var copyButton = CreateToolButton') {
+    throw 'Inline screenshot editor should include a visible copy button.'
+}
+
+if ($source -notmatch 'copyButton\.Click \+= delegate \{ CopyEditedImage\(\); \};') {
+    throw 'Inline screenshot copy button should copy without closing the editor.'
+}
+
+if ($source -notmatch 'ShowInlineOcrResult\(RecognizeImages\(editorCanvas\.GetImagesForOcr\(selectedOriginalImage\)\)\)') {
+    throw 'Inline editor OCR should show recognized text inside the current overlay.'
+}
+
+if ($source -notmatch 'if \(recognizeImmediately\)[\s\S]*ShowInlineOcrResult\(RecognizeImages\(editorCanvas\.GetImagesForOcr\(selectedOriginalImage\)\)\)') {
+    throw 'OCR hotkey should recognize immediately after the user selects a region.'
+}
+
+if ($source -notmatch 'CreateOcrToolbar') {
+    throw 'Inline OCR result should replace the screenshot toolbar with OCR result actions.'
+}
+
+if ($source -notmatch 'inlineOcrBox') {
+    throw 'Inline OCR result should display recognized text in the selected region.'
+}
+
+if ($source -notmatch 'TextBox inlineOcrBox') {
+    throw 'Inline OCR result should use a standard text box in the floating editor.'
+}
+
+if ($source -notmatch 'WordWrap = true') {
+    throw 'Inline OCR result text should wrap automatically based on the current box width.'
+}
+
+if ($source -notmatch 'Font = new Font\("Microsoft YaHei UI", 14') {
+    throw 'Inline OCR result should use a larger readable font.'
+}
+
+if ($source -notmatch 'ForeColor = Color\.Black') {
+    throw 'Inline OCR result should render text in black.'
+}
+
+if ($source -notmatch 'BackColor = Color\.White') {
+    throw 'Inline OCR result should render on a white background.'
+}
+
+if ($source -notmatch 'BorderStyle = BorderStyle\.FixedSingle') {
+    throw 'Inline OCR result should draw a visible black border.'
+}
+
+if ($source -notmatch 'ocrResizeGrip') {
+    throw 'Inline OCR result should include a resize grip.'
+}
+
+if ($source -notmatch 'BeginResizeInlineOcrBox') {
+    throw 'Inline OCR result should start resizing from the resize grip.'
+}
+
+if ($source -notmatch 'ResizeInlineOcrBox') {
+    throw 'Inline OCR result should resize while dragging the resize grip.'
+}
+
+if ($source -notmatch 'EnsureFloatingWindowHasOcrWorkspace') {
+    throw 'Inline OCR result should reserve enough floating workspace for resizing.'
+}
+
+if ($source -notmatch 'GetInlineOcrResizeEdges') {
+    throw 'Inline OCR result should support resizing from any edge or corner.'
+}
+
+if ($source -notmatch 'BeginMoveSelectedImage') {
+    throw 'Selected screenshot should be movable before choosing an annotation tool.'
+}
+
+if ($source -notmatch 'MoveSelectedImage') {
+    throw 'Dragging the selected screenshot should move the inline editor surface.'
+}
+
+if ($source -notmatch 'TranslateInlineOcrText') {
+    throw 'Inline OCR toolbar should support translation.'
+}
+
+if ($source -notmatch 'RemoveTextFormatting') {
+    throw 'Inline OCR toolbar should support remove-format and restore-format actions.'
+}
+
+Write-Host 'Inline screenshot editor test passed.'

@@ -84,18 +84,18 @@ namespace ScreenshotHotkeyTool
 
             if (!screenshotHotkeyWindow.Register(settings.Modifiers, settings.KeyCode))
             {
-                MessageBox.Show(settings.DisplayText + " ?????????????????", "?????", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(settings.DisplayText + " 已被占用，请在设置里换一个快捷键。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             if (settings.OcrEnabled && !ocrHotkeyWindow.Register(settings.OcrModifiers, settings.OcrKeyCode))
             {
-                MessageBox.Show(settings.OcrDisplayText + " ????????????? OCR ????", "?????", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(settings.OcrDisplayText + " 已被占用，请在设置里换一个 OCR 快捷键。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
 
             var menu = new ContextMenuStrip();
-            menu.Items.Add("????", null, delegate { TriggerSnip(); });
-            menu.Items.Add("????", null, delegate { TriggerOcr(); });
-            menu.Items.Add("??", null, delegate { OpenSettings(); });
-            menu.Items.Add("??", null, delegate { ExitThread(); });
+            menu.Items.Add("立即截图", null, delegate { TriggerSnip(); });
+            menu.Items.Add("识别文字", null, delegate { TriggerOcr(); });
+            menu.Items.Add("设置", null, delegate { OpenSettings(); });
+            menu.Items.Add("退出", null, delegate { ExitThread(); });
 
             trayAppIcon = TrayIconFactory.Create();
             trayIcon = new NotifyIcon
@@ -120,7 +120,7 @@ namespace ScreenshotHotkeyTool
                 if (!ApplyHotkeySettings(newSettings))
                 {
                     ApplyHotkeySettings(oldSettings);
-                    MessageBox.Show("???????????????", "?????", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show("快捷键已被占用，请换一个组合。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
@@ -132,7 +132,7 @@ namespace ScreenshotHotkeyTool
 
         private void UpdateTrayText()
         {
-            trayIcon.Text = Shorten("???" + settings.DisplayText + " OCR?" + settings.OcrDisplayText, 63);
+            trayIcon.Text = Shorten("截图：" + settings.DisplayText + " OCR：" + settings.OcrDisplayText, 63);
         }
 
         private bool ApplyHotkeySettings(HotkeySettings candidate)
@@ -156,18 +156,46 @@ namespace ScreenshotHotkeyTool
 
         private void TriggerSnip()
         {
-            StartSelection(SaveCapturedImage);
+            StartScreenshotEditorSelection(false);
         }
 
         private void TriggerOcr()
         {
             if (!settings.OcrEnabled)
             {
-                MessageBox.Show("OCR ????????????", "?????", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("OCR 未启用，请在设置里开启。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            StartSelection(RecognizeCapturedImage);
+            StartScreenshotEditorSelection(true);
+        }
+
+        private void StartScreenshotEditorSelection(bool recognizeImmediately)
+        {
+            if (isCapturing)
+                return;
+
+            isCapturing = true;
+            File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "last-trigger.txt"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+
+            try
+            {
+                var bounds = SystemInformation.VirtualScreen;
+                var screenshot = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
+                using (var graphics = Graphics.FromImage(screenshot))
+                {
+                    graphics.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
+                }
+
+                using (var overlay = new SelectionOverlayForm(bounds, screenshot, SaveBitmap, RecognizeText, settings, recognizeImmediately))
+                {
+                    overlay.ShowDialog();
+                }
+            }
+            finally
+            {
+                isCapturing = false;
+            }
         }
 
         private void StartSelection(Action<Bitmap> onCaptured)
@@ -228,7 +256,7 @@ namespace ScreenshotHotkeyTool
             }
             catch (Exception ex)
             {
-                return "OCR ???" + Environment.NewLine + ex.Message;
+                return "OCR 失败：" + Environment.NewLine + ex.Message;
             }
         }
 
@@ -239,14 +267,14 @@ namespace ScreenshotHotkeyTool
                 directory = HotkeySettings.DefaultSaveDirectory();
 
             Directory.CreateDirectory(directory);
-            var filename = "??_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png";
+            var filename = "截图_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png";
             string path;
             using (var dialog = new SaveFileDialog())
             {
-                dialog.Title = "????";
+                dialog.Title = "保存截图";
                 dialog.InitialDirectory = directory;
                 dialog.FileName = filename;
-                dialog.Filter = "PNG ?? (*.png)|*.png";
+                dialog.Filter = "PNG 图片 (*.png)|*.png";
                 dialog.DefaultExt = "png";
                 dialog.AddExtension = true;
                 dialog.OverwritePrompt = true;
@@ -284,15 +312,67 @@ namespace ScreenshotHotkeyTool
         private readonly Rectangle virtualBounds;
         private readonly Bitmap screenshot;
         private readonly Action<Bitmap> onCaptured;
+        private readonly Func<Bitmap, string> saveImage;
+        private readonly Func<Bitmap, string> recognizeText;
+        private readonly HotkeySettings settings;
+        private readonly bool inlineEditingMode;
+        private readonly bool recognizeImmediately;
+        private ImageCanvasControl editorCanvas;
+        private Bitmap selectedOriginalImage;
+        private TextBox inlineOcrBox;
+        private Panel ocrResizeGrip;
+        private FlowLayoutPanel editorToolbar;
+        private FlowLayoutPanel ocrToolbar;
+        private FlowLayoutPanel styleToolbar;
+        private ToolTip toolTip;
+        private Button drawButton;
+        private Button rectangleButton;
+        private Button textButton;
+        private Button arrowButton;
+        private Button numberButton;
+        private Button mosaicButton;
+        private Label sizeLabel;
         private Point startPoint;
         private Point currentPoint;
         private bool selecting;
+        private bool editing;
+        private bool movingSelectedImage;
+        private bool resizingInlineOcrBox;
+        private bool inlineOcrFormatRemoved;
+        private bool inlineOcrShowingTranslation;
+        private bool resizeLeft;
+        private bool resizeTop;
+        private bool resizeRight;
+        private bool resizeBottom;
+        private Rectangle selectedBounds;
+        private Rectangle moveStartBounds;
+        private Rectangle resizeStartBounds;
+        private Point moveStartPoint;
+        private Point resizeStartPoint;
+        private string inlineOcrFormattedText;
+        private string inlineOcrTextBeforeTranslation;
+        private static readonly Color TransparentEditorColor = Color.FromArgb(255, 1, 2, 3);
 
         public SelectionOverlayForm(Rectangle virtualBounds, Bitmap screenshot, Action<Bitmap> onCaptured)
+            : this(virtualBounds, screenshot, onCaptured, null, null, null, false, false)
+        {
+        }
+
+        public SelectionOverlayForm(Rectangle virtualBounds, Bitmap screenshot, Func<Bitmap, string> saveImage, Func<Bitmap, string> recognizeText, HotkeySettings settings, bool recognizeImmediately)
+            : this(virtualBounds, screenshot, null, saveImage, recognizeText, settings, true, recognizeImmediately)
+        {
+        }
+
+        private SelectionOverlayForm(Rectangle virtualBounds, Bitmap screenshot, Action<Bitmap> onCaptured, Func<Bitmap, string> saveImage, Func<Bitmap, string> recognizeText, HotkeySettings settings, bool inlineEditingMode, bool recognizeImmediately)
         {
             this.virtualBounds = virtualBounds;
             this.screenshot = screenshot;
             this.onCaptured = onCaptured;
+            this.saveImage = saveImage;
+            this.recognizeText = recognizeText;
+            this.settings = settings ?? HotkeySettings.Default();
+            this.inlineEditingMode = inlineEditingMode;
+            this.recognizeImmediately = recognizeImmediately;
 
             FormBorderStyle = FormBorderStyle.None;
             AutoScaleMode = AutoScaleMode.None;
@@ -313,6 +393,19 @@ namespace ScreenshotHotkeyTool
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            if (editing)
+            {
+                e.Graphics.Clear(BackColor);
+
+                using (var borderPen = new Pen(Color.White, 2))
+                using (var guidePen = new Pen(Color.FromArgb(210, 24, 119, 242), 1))
+                {
+                    e.Graphics.DrawRectangle(borderPen, selectedBounds);
+                    e.Graphics.DrawRectangle(guidePen, selectedBounds.X + 2, selectedBounds.Y + 2, Math.Max(1, selectedBounds.Width - 4), Math.Max(1, selectedBounds.Height - 4));
+                }
+                return;
+            }
+
             e.Graphics.DrawImageUnscaled(screenshot, 0, 0);
 
             using (var overlayBrush = new SolidBrush(Color.FromArgb(95, Color.Black)))
@@ -320,12 +413,15 @@ namespace ScreenshotHotkeyTool
                 e.Graphics.FillRectangle(overlayBrush, ClientRectangle);
             }
 
-            var selection = CurrentSelection;
+            var selection = editing ? selectedBounds : CurrentSelection;
             if (selection.Width > 0 && selection.Height > 0)
             {
-                e.Graphics.SetClip(selection);
-                e.Graphics.DrawImageUnscaled(screenshot, 0, 0);
-                e.Graphics.ResetClip();
+                if (!editing)
+                {
+                    e.Graphics.SetClip(selection);
+                    e.Graphics.DrawImageUnscaled(screenshot, 0, 0);
+                    e.Graphics.ResetClip();
+                }
 
                 using (var borderPen = new Pen(Color.White, 2))
                 using (var guidePen = new Pen(Color.FromArgb(210, 24, 119, 242), 1))
@@ -335,11 +431,21 @@ namespace ScreenshotHotkeyTool
                 }
             }
 
-            DrawHint(e.Graphics);
+            if (!editing)
+                DrawHint(e.Graphics);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
+            if (editing)
+            {
+                if (inlineOcrBox != null)
+                    BeginResizeInlineOcrBox(this, e);
+                else if (selectedBounds.Contains(e.Location))
+                    BeginMoveSelectedImage(this, e);
+                return;
+            }
+
             if (e.Button != MouseButtons.Left)
                 return;
 
@@ -351,6 +457,15 @@ namespace ScreenshotHotkeyTool
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
+            if (editing)
+            {
+                if (inlineOcrBox != null)
+                    ResizeInlineOcrBox(this, e);
+                else if (movingSelectedImage)
+                    MoveSelectedImage(this, e);
+                return;
+            }
+
             if (!selecting)
                 return;
 
@@ -360,6 +475,15 @@ namespace ScreenshotHotkeyTool
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
+            if (editing)
+            {
+                if (inlineOcrBox != null)
+                    EndResizeInlineOcrBox(this, e);
+                else if (movingSelectedImage)
+                    EndMoveSelectedImage(this, e);
+                return;
+            }
+
             if (e.Button != MouseButtons.Left || !selecting)
                 return;
 
@@ -373,10 +497,17 @@ namespace ScreenshotHotkeyTool
                 return;
             }
 
+            if (inlineEditingMode)
+            {
+                BeginInlineEditing(selection);
+                return;
+            }
+
             Hide();
             using (var cropped = screenshot.Clone(selection, PixelFormat.Format32bppArgb))
             {
-                onCaptured((Bitmap)cropped.Clone());
+                if (onCaptured != null)
+                    onCaptured((Bitmap)cropped.Clone());
             }
             Close();
         }
@@ -388,10 +519,734 @@ namespace ScreenshotHotkeyTool
             base.OnKeyDown(e);
         }
 
+        private void BeginInlineEditing(Rectangle selection)
+        {
+            selecting = false;
+            editing = true;
+            Cursor = Cursors.Default;
+
+            selectedOriginalImage = screenshot.Clone(selection, PixelFormat.Format32bppArgb);
+            SwitchToFloatingEditorWindow(selection);
+            editorCanvas = new ImageCanvasControl((Bitmap)selectedOriginalImage.Clone())
+            {
+                Bounds = selectedBounds,
+                BackColor = Color.White,
+                Cursor = Cursors.SizeAll
+            };
+            editorCanvas.MouseDown += BeginMoveSelectedImage;
+            editorCanvas.MouseMove += MoveSelectedImage;
+            editorCanvas.MouseUp += EndMoveSelectedImage;
+
+            editorToolbar = CreateEditorToolbar();
+            styleToolbar = CreateStyleToolbar();
+            PositionFloatingToolbars();
+            HideEditorToolbars();
+
+            Controls.Add(editorCanvas);
+            Controls.Add(editorToolbar);
+            Controls.Add(styleToolbar);
+            editorCanvas.BringToFront();
+            editorToolbar.BringToFront();
+            styleToolbar.BringToFront();
+            UpdateOverlayRegion();
+            Invalidate();
+
+            if (recognizeImmediately)
+                ShowInlineOcrResult(RecognizeImages(editorCanvas.GetImagesForOcr(selectedOriginalImage)));
+            else
+                ShowEditorToolbars();
+        }
+
+        private void SwitchToFloatingEditorWindow(Rectangle selection)
+        {
+            var toolbarReserve = 130;
+            var windowWidth = Math.Min(virtualBounds.Width, Math.Max(selection.Width, 360));
+            var windowHeight = Math.Min(virtualBounds.Height, selection.Height + toolbarReserve);
+            var screenLeft = virtualBounds.Left + selection.Left;
+            var screenTop = virtualBounds.Top + selection.Top;
+            var left = Clamp(screenLeft, virtualBounds.Left, Math.Max(virtualBounds.Left, virtualBounds.Right - windowWidth));
+            var top = Clamp(screenTop, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - windowHeight));
+
+            Bounds = new Rectangle(left, top, windowWidth, windowHeight);
+            BackColor = TransparentEditorColor;
+            TransparencyKey = TransparentEditorColor;
+            TopMost = true;
+            ShowInTaskbar = false;
+            selectedBounds = new Rectangle(
+                Math.Max(0, screenLeft - left),
+                Math.Max(0, screenTop - top),
+                selection.Width,
+                selection.Height);
+            Activate();
+        }
+
+        private void ShowEditorToolbars()
+        {
+            if (inlineOcrBox != null)
+                return;
+
+            if (editorToolbar != null)
+                editorToolbar.Visible = true;
+            if (styleToolbar != null && editorCanvas != null)
+                styleToolbar.Visible = editorCanvas.Mode != AnnotationMode.None;
+            PositionFloatingToolbars();
+            UpdateOverlayRegion();
+        }
+
+        private void HideEditorToolbars()
+        {
+            if (editorToolbar != null)
+                editorToolbar.Visible = false;
+            if (styleToolbar != null)
+                styleToolbar.Visible = false;
+            UpdateOverlayRegion();
+        }
+
+        private FlowLayoutPanel CreateEditorToolbar()
+        {
+            var toolbar = CreateFloatingToolbar(48);
+
+            var pinButton = CreateToolButton("●", "主工具");
+            rectangleButton = CreateToolButton("□", "框选");
+            var arrowIconButton = CreateToolButton("↗", "箭头");
+            arrowButton = arrowIconButton;
+            drawButton = CreateToolButton("✎", "画笔");
+            textButton = CreateToolButton("A", "文字");
+            numberButton = CreateToolButton("①", "序号");
+            mosaicButton = CreateToolButton("▦", "马赛克");
+            var ocrButton = CreateToolButton("中A", "识别文字");
+            var undoButton = CreateToolButton("↶", "撤销");
+            var saveButton = CreateToolButton("↓", "保存");
+            var copyButton = CreateToolButton("复制", "复制截图");
+            var cancelButton = CreateToolButton("×", "取消");
+            var doneButton = CreateToolButton("✓", "完成");
+
+            toolbar.Controls.Add(pinButton);
+            toolbar.Controls.Add(rectangleButton);
+            toolbar.Controls.Add(arrowIconButton);
+            toolbar.Controls.Add(drawButton);
+            toolbar.Controls.Add(textButton);
+            toolbar.Controls.Add(numberButton);
+            toolbar.Controls.Add(mosaicButton);
+            toolbar.Controls.Add(ocrButton);
+            toolbar.Controls.Add(undoButton);
+            toolbar.Controls.Add(saveButton);
+            toolbar.Controls.Add(copyButton);
+            toolbar.Controls.Add(cancelButton);
+            toolbar.Controls.Add(doneButton);
+
+            rectangleButton.Click += delegate { ToggleEditorMode(AnnotationMode.Rectangle); };
+            arrowIconButton.Click += delegate { ToggleEditorMode(AnnotationMode.Arrow); };
+            drawButton.Click += delegate { ToggleEditorMode(AnnotationMode.Freehand); };
+            textButton.Click += delegate { ToggleEditorMode(AnnotationMode.Text); };
+            numberButton.Click += delegate { ToggleEditorMode(AnnotationMode.Number); };
+            mosaicButton.Click += delegate { ToggleEditorMode(AnnotationMode.Mosaic); };
+            undoButton.Click += delegate { editorCanvas.Undo(); };
+            saveButton.Click += delegate { SaveEditedImage(); };
+            copyButton.Click += delegate { CopyEditedImage(); };
+            ocrButton.Click += delegate
+            {
+                ShowInlineOcrResult(RecognizeImages(editorCanvas.GetImagesForOcr(selectedOriginalImage)));
+            };
+            cancelButton.Click += delegate { Close(); };
+            doneButton.Click += delegate
+            {
+                Clipboard.SetImage((Bitmap)editorCanvas.Image.Clone());
+                Close();
+            };
+
+            return toolbar;
+        }
+
+        private void CopyEditedImage()
+        {
+            Clipboard.SetImage((Bitmap)editorCanvas.Image.Clone());
+        }
+
+        private FlowLayoutPanel CreateStyleToolbar()
+        {
+            var toolbar = CreateFloatingToolbar(44);
+            toolbar.Visible = false;
+
+            toolbar.Controls.Add(CreateStyleButton("细", delegate { SetStrokeWidth(3); }));
+            toolbar.Controls.Add(CreateStyleButton("粗", delegate { SetStrokeWidth(6); }));
+            toolbar.Controls.Add(CreateStyleButton("红", delegate { SetStrokeColor(Color.Red); }));
+            toolbar.Controls.Add(CreateStyleButton("黄", delegate { SetStrokeColor(Color.Gold); }));
+            toolbar.Controls.Add(CreateStyleButton("白", delegate { SetStrokeColor(Color.White); }));
+
+            sizeLabel = new Label
+            {
+                Text = "4",
+                Width = 34,
+                Height = 30,
+                TextAlign = ContentAlignment.MiddleCenter,
+                ForeColor = Color.White,
+                Margin = new Padding(8, 6, 2, 4)
+            };
+            toolbar.Controls.Add(sizeLabel);
+
+            return toolbar;
+        }
+
+        private FlowLayoutPanel CreateOcrToolbar()
+        {
+            var toolbar = CreateFloatingToolbar(48);
+            var translateToChineseButton = CreateToolButton("转中文", "转中文");
+            var translateToEnglishButton = CreateToolButton("转英文", "转英文");
+            var formatButton = CreateToolButton("去格式", "去格式");
+            var copyButton = CreateToolButton("复制", "复制");
+            var saveTextButton = CreateToolButton("保存", "保存文字");
+            var closeButton = CreateToolButton("关闭", "关闭");
+
+            toolbar.Controls.Add(translateToChineseButton);
+            toolbar.Controls.Add(translateToEnglishButton);
+            toolbar.Controls.Add(formatButton);
+            toolbar.Controls.Add(copyButton);
+            toolbar.Controls.Add(saveTextButton);
+            toolbar.Controls.Add(closeButton);
+
+            translateToChineseButton.Click += delegate { TranslateInlineOcrText("zh-CN", translateToChineseButton, translateToEnglishButton); };
+            translateToEnglishButton.Click += delegate { TranslateInlineOcrText("en", translateToEnglishButton, translateToChineseButton); };
+            formatButton.Click += delegate
+            {
+                if (inlineOcrBox == null)
+                    return;
+
+                if (inlineOcrFormatRemoved)
+                {
+                    SetInlineOcrText(inlineOcrFormattedText);
+                    inlineOcrFormatRemoved = false;
+                    formatButton.Text = "去格式";
+                    toolTip.SetToolTip(formatButton, "去格式");
+                }
+                else
+                {
+                    SetInlineOcrText(RemoveTextFormatting(inlineOcrFormattedText));
+                    inlineOcrFormatRemoved = true;
+                    formatButton.Text = "复原格式";
+                    toolTip.SetToolTip(formatButton, "复原格式");
+                }
+                ClearInlineTranslationState(translateToChineseButton, translateToEnglishButton);
+            };
+            copyButton.Click += delegate
+            {
+                if (inlineOcrBox != null && !string.IsNullOrEmpty(inlineOcrBox.Text))
+                    Clipboard.SetText(inlineOcrBox.Text);
+            };
+            saveTextButton.Click += delegate { SaveInlineOcrText(); };
+            closeButton.Click += delegate { Close(); };
+
+            return toolbar;
+        }
+
+        private static FlowLayoutPanel CreateFloatingToolbar(int height)
+        {
+            return new FlowLayoutPanel
+            {
+                Height = height,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(8, 6, 8, 6),
+                FlowDirection = FlowDirection.LeftToRight,
+                BackColor = Color.FromArgb(42, 42, 42),
+                WrapContents = false
+            };
+        }
+
+        private Button CreateToolButton(string text, string tip)
+        {
+            if (toolTip == null)
+            {
+                toolTip = new ToolTip
+                {
+                    AutomaticDelay = 250,
+                    AutoPopDelay = 4000,
+                    InitialDelay = 250,
+                    ReshowDelay = 100,
+                    ShowAlways = true
+                };
+            }
+
+            var button = new Button
+            {
+                Text = text,
+                Width = text.Length > 1 ? 48 : 38,
+                Height = 30,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(42, 42, 42),
+                ForeColor = Color.White,
+                Margin = new Padding(4, 3, 4, 3)
+            };
+            button.FlatAppearance.BorderSize = 0;
+            button.Tag = tip;
+            toolTip.SetToolTip(button, tip);
+            return button;
+        }
+
+        private Button CreateStyleButton(string text, EventHandler click)
+        {
+            var button = CreateToolButton(text, text);
+            button.Width = 42;
+            button.Click += click;
+            return button;
+        }
+
+        private void PositionFloatingToolbars()
+        {
+            var mainToolbar = ocrToolbar ?? editorToolbar;
+            var toolbarSize = mainToolbar.GetPreferredSize(Size.Empty);
+            var styleSize = styleToolbar.GetPreferredSize(Size.Empty);
+            var toolbarX = Clamp(selectedBounds.Left + (selectedBounds.Width - toolbarSize.Width) / 2, 8, ClientSize.Width - toolbarSize.Width - 8);
+            var toolbarY = selectedBounds.Bottom + 10;
+            if (toolbarY + toolbarSize.Height + styleSize.Height + 18 > ClientSize.Height)
+                toolbarY = Math.Max(8, selectedBounds.Top - toolbarSize.Height - styleSize.Height - 18);
+
+            mainToolbar.Location = new Point(toolbarX, toolbarY);
+            if (styleToolbar != null)
+            {
+                styleToolbar.Location = new Point(
+                    Clamp(selectedBounds.Left + (selectedBounds.Width - styleSize.Width) / 2, 8, ClientSize.Width - styleSize.Width - 8),
+                    toolbarY + toolbarSize.Height + 8);
+            }
+            UpdateOverlayRegion();
+        }
+
+        private void UpdateOverlayRegion()
+        {
+            if (!editing)
+                return;
+
+            if (Region != null)
+            {
+                var oldRegion = Region;
+                Region = null;
+                oldRegion.Dispose();
+            }
+        }
+
+        private static void AddVisibleControlToRegion(GraphicsPath path, Control control)
+        {
+            if (control != null && control.Visible)
+                path.AddRectangle(control.Bounds);
+        }
+
+        private void ToggleEditorMode(AnnotationMode mode)
+        {
+            editorCanvas.Mode = editorCanvas.Mode == mode ? AnnotationMode.None : mode;
+            styleToolbar.Visible = editorCanvas.Mode != AnnotationMode.None;
+            UpdateEditorButtons();
+        }
+
+        private void UpdateEditorButtons()
+        {
+            MarkToolButton(drawButton, editorCanvas.Mode == AnnotationMode.Freehand);
+            MarkToolButton(rectangleButton, editorCanvas.Mode == AnnotationMode.Rectangle);
+            MarkToolButton(textButton, editorCanvas.Mode == AnnotationMode.Text);
+            MarkToolButton(arrowButton, editorCanvas.Mode == AnnotationMode.Arrow);
+            MarkToolButton(numberButton, editorCanvas.Mode == AnnotationMode.Number);
+            MarkToolButton(mosaicButton, editorCanvas.Mode == AnnotationMode.Mosaic);
+            editorCanvas.Cursor = editorCanvas.Mode == AnnotationMode.None ? Cursors.SizeAll : Cursors.Cross;
+        }
+
+        private static void MarkToolButton(Button button, bool selected)
+        {
+            if (button == null)
+                return;
+
+            button.BackColor = selected ? Color.FromArgb(24, 119, 242) : Color.FromArgb(42, 42, 42);
+        }
+
+        private void BeginMoveSelectedImage(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left || editorCanvas == null || editorCanvas.Mode != AnnotationMode.None || inlineOcrBox != null)
+                return;
+
+            ShowEditorToolbars();
+            movingSelectedImage = true;
+            var sourceControl = sender as Control;
+            moveStartPoint = sourceControl.PointToScreen(e.Location);
+            moveStartBounds = Bounds;
+            editorCanvas.Cursor = Cursors.SizeAll;
+        }
+
+        private void MoveSelectedImage(object sender, MouseEventArgs e)
+        {
+            if (!movingSelectedImage || editorCanvas == null)
+                return;
+
+            var sourceControl = sender as Control;
+            var currentPoint = sourceControl.PointToScreen(e.Location);
+            var dx = currentPoint.X - moveStartPoint.X;
+            var dy = currentPoint.Y - moveStartPoint.Y;
+            var newLeft = Clamp(moveStartBounds.Left + dx, virtualBounds.Left, Math.Max(virtualBounds.Left, virtualBounds.Right - moveStartBounds.Width));
+            var newTop = Clamp(moveStartBounds.Top + dy, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - moveStartBounds.Height));
+            Bounds = new Rectangle(newLeft, newTop, moveStartBounds.Width, moveStartBounds.Height);
+        }
+
+        private void EndMoveSelectedImage(object sender, MouseEventArgs e)
+        {
+            if (!movingSelectedImage)
+                return;
+
+            movingSelectedImage = false;
+            if (editorCanvas != null)
+                editorCanvas.Cursor = editorCanvas.Mode == AnnotationMode.None ? Cursors.SizeAll : Cursors.Cross;
+        }
+
+        private void SetStrokeWidth(int width)
+        {
+            editorCanvas.StrokeWidth = width;
+            if (sizeLabel != null)
+                sizeLabel.Text = width.ToString();
+        }
+
+        private void SetStrokeColor(Color color)
+        {
+            editorCanvas.StrokeColor = color;
+        }
+
+        private void SaveEditedImage()
+        {
+            using (var copy = (Bitmap)editorCanvas.Image.Clone())
+            {
+                saveImage(copy);
+            }
+        }
+
+        private void ShowInlineOcrResult(string text)
+        {
+            inlineOcrFormattedText = text ?? string.Empty;
+            inlineOcrFormatRemoved = false;
+            inlineOcrShowingTranslation = false;
+            inlineOcrTextBeforeTranslation = null;
+            EnsureFloatingWindowHasOcrWorkspace();
+
+            if (editorCanvas != null)
+                editorCanvas.Visible = false;
+            if (editorToolbar != null)
+                editorToolbar.Visible = false;
+            if (styleToolbar != null)
+                styleToolbar.Visible = false;
+
+            inlineOcrBox = new TextBox
+            {
+                Bounds = selectedBounds,
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                WordWrap = true,
+                Font = new Font("Microsoft YaHei UI", 14, FontStyle.Regular),
+                BorderStyle = BorderStyle.FixedSingle,
+                Text = string.IsNullOrWhiteSpace(inlineOcrFormattedText) ? "未识别到文字" : inlineOcrFormattedText,
+                BackColor = Color.White,
+                ForeColor = Color.Black,
+                ReadOnly = false
+            };
+            inlineOcrBox.MouseDown += BeginResizeInlineOcrBox;
+            inlineOcrBox.MouseMove += ResizeInlineOcrBox;
+            inlineOcrBox.MouseUp += EndResizeInlineOcrBox;
+            ocrResizeGrip = new Panel
+            {
+                Bounds = ResizeGripBounds(),
+                BackColor = Color.FromArgb(24, 119, 242),
+                Cursor = Cursors.SizeNWSE
+            };
+            ocrResizeGrip.MouseDown += BeginResizeInlineOcrBox;
+            ocrResizeGrip.MouseMove += ResizeInlineOcrBox;
+            ocrResizeGrip.MouseUp += EndResizeInlineOcrBox;
+
+            ocrToolbar = CreateOcrToolbar();
+            PositionFloatingToolbars();
+            Controls.Add(ocrResizeGrip);
+            Controls.Add(ocrToolbar);
+            Controls.Add(inlineOcrBox);
+            inlineOcrBox.BringToFront();
+            ocrResizeGrip.BringToFront();
+            ocrToolbar.BringToFront();
+            UpdateOverlayRegion();
+        }
+
+        private void SetInlineOcrText(string text)
+        {
+            if (inlineOcrBox == null)
+                return;
+
+            inlineOcrBox.Text = string.IsNullOrWhiteSpace(text) ? "未识别到文字" : text;
+        }
+
+        private void EnsureFloatingWindowHasOcrWorkspace()
+        {
+            var toolbarReserve = 86;
+            var targetWidth = Math.Min(virtualBounds.Width, Math.Max(selectedBounds.Width, 860));
+            var targetHeight = Math.Min(Math.Max(120, virtualBounds.Height - toolbarReserve), Math.Max(selectedBounds.Height, 520));
+            var centerX = Bounds.Left + selectedBounds.Left + selectedBounds.Width / 2;
+            var centerY = Bounds.Top + selectedBounds.Top + selectedBounds.Height / 2;
+            var windowWidth = targetWidth;
+            var windowHeight = Math.Min(virtualBounds.Height, targetHeight + toolbarReserve);
+            var left = Clamp(centerX - targetWidth / 2, virtualBounds.Left, Math.Max(virtualBounds.Left, virtualBounds.Right - windowWidth));
+            var top = Clamp(centerY - targetHeight / 2, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - windowHeight));
+
+            Bounds = new Rectangle(left, top, windowWidth, windowHeight);
+            selectedBounds = new Rectangle(0, 0, targetWidth, targetHeight);
+        }
+
+        private void TranslateInlineOcrText(string targetLanguage, Button primaryButton, Button secondaryButton)
+        {
+            if (inlineOcrBox == null)
+                return;
+
+            if (inlineOcrShowingTranslation)
+            {
+                SetInlineOcrText(inlineOcrTextBeforeTranslation ?? inlineOcrFormattedText);
+                inlineOcrShowingTranslation = false;
+                inlineOcrTextBeforeTranslation = null;
+                primaryButton.Text = targetLanguage == "en" ? "转英文" : "转中文";
+                toolTip.SetToolTip(primaryButton, primaryButton.Text);
+                return;
+            }
+
+            var sourceText = inlineOcrBox.Text;
+            if (string.IsNullOrWhiteSpace(sourceText))
+                return;
+
+            inlineOcrTextBeforeTranslation = sourceText;
+            primaryButton.Enabled = false;
+            secondaryButton.Enabled = false;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string translatedText = null;
+                Exception error = null;
+                try
+                {
+                    translatedText = TranslationRunner.TranslatePreservingLines(sourceText, targetLanguage, settings);
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                }
+
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    primaryButton.Enabled = true;
+                    secondaryButton.Enabled = true;
+                    if (error != null)
+                    {
+                        SetInlineOcrText("翻译失败：" + Environment.NewLine + error.Message + Environment.NewLine + Environment.NewLine + sourceText);
+                        ClearInlineTranslationState(primaryButton, secondaryButton);
+                        return;
+                    }
+
+                    SetInlineOcrText(translatedText);
+                    inlineOcrShowingTranslation = true;
+                    primaryButton.Text = "复原原文";
+                    toolTip.SetToolTip(primaryButton, "复原原文");
+                });
+            });
+        }
+
+        private void ClearInlineTranslationState(Button translateToChineseButton, Button translateToEnglishButton)
+        {
+            inlineOcrShowingTranslation = false;
+            inlineOcrTextBeforeTranslation = null;
+            if (translateToChineseButton != null)
+            {
+                translateToChineseButton.Text = "转中文";
+                toolTip.SetToolTip(translateToChineseButton, "转中文");
+            }
+            if (translateToEnglishButton != null)
+            {
+                translateToEnglishButton.Text = "转英文";
+                toolTip.SetToolTip(translateToEnglishButton, "转英文");
+            }
+        }
+
+        private void SaveInlineOcrText()
+        {
+            if (inlineOcrBox == null)
+                return;
+
+            using (var dialog = new SaveFileDialog())
+            {
+                dialog.Title = "保存文字";
+                dialog.FileName = "识别文字_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
+                dialog.Filter = "文本文件 (*.txt)|*.txt";
+                dialog.DefaultExt = "txt";
+                dialog.AddExtension = true;
+                if (dialog.ShowDialog() == DialogResult.OK)
+                File.WriteAllText(dialog.FileName, inlineOcrBox.Text);
+            }
+        }
+
+        private Rectangle ResizeGripBounds()
+        {
+            var size = 16;
+            return new Rectangle(selectedBounds.Right - size, selectedBounds.Bottom - size, size, size);
+        }
+
+        private void BeginResizeInlineOcrBox(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left || inlineOcrBox == null)
+                return;
+
+            var edges = GetInlineOcrResizeEdges(sender, e.Location);
+            if (!edges)
+                return;
+
+            resizingInlineOcrBox = true;
+            var sourceControl = sender as Control;
+            resizeStartPoint = PointToClient(sourceControl.PointToScreen(e.Location));
+            resizeStartBounds = selectedBounds;
+        }
+
+        private void ResizeInlineOcrBox(object sender, MouseEventArgs e)
+        {
+            if (!resizingInlineOcrBox && inlineOcrBox != null)
+            {
+                var cursor = CursorForResizeEdges(GetInlineOcrResizeEdges(sender, e.Location));
+                if (sender == this)
+                    Cursor = cursor;
+                else
+                    inlineOcrBox.Cursor = cursor;
+                return;
+            }
+
+            if (!resizingInlineOcrBox || inlineOcrBox == null)
+                return;
+
+            var sourceControl = sender as Control;
+            var currentPoint = PointToClient(sourceControl.PointToScreen(e.Location));
+            var width = Math.Max(180, resizeStartBounds.Width + currentPoint.X - resizeStartPoint.X);
+            var height = Math.Max(110, resizeStartBounds.Height + currentPoint.Y - resizeStartPoint.Y);
+            width = Math.Min(width, ClientSize.Width - resizeStartBounds.Left);
+            height = Math.Min(height, ClientSize.Height - resizeStartBounds.Top);
+            var left = resizeStartBounds.Left;
+            var top = resizeStartBounds.Top;
+            var right = resizeStartBounds.Right;
+            var bottom = resizeStartBounds.Bottom;
+            if (resizeLeft)
+                left = Clamp(currentPoint.X, 0, resizeStartBounds.Right - 180);
+            if (resizeTop)
+                top = Clamp(currentPoint.Y, 0, resizeStartBounds.Bottom - 110);
+            if (resizeRight)
+                right = Clamp(currentPoint.X, resizeStartBounds.Left + 180, ClientSize.Width);
+            if (resizeBottom)
+                bottom = Clamp(currentPoint.Y, resizeStartBounds.Top + 110, ClientSize.Height);
+
+            selectedBounds = new Rectangle(left, top, right - left, bottom - top);
+            inlineOcrBox.Bounds = selectedBounds;
+            ocrResizeGrip.Bounds = ResizeGripBounds();
+            PositionFloatingToolbars();
+            UpdateOverlayRegion();
+            Invalidate();
+        }
+
+        private void EndResizeInlineOcrBox(object sender, MouseEventArgs e)
+        {
+            resizingInlineOcrBox = false;
+            resizeLeft = false;
+            resizeTop = false;
+            resizeRight = false;
+            resizeBottom = false;
+        }
+
+        private bool GetInlineOcrResizeEdges(object sender, Point location)
+        {
+            resizeLeft = false;
+            resizeTop = false;
+            resizeRight = false;
+            resizeBottom = false;
+
+            var control = sender as Control;
+            if (control == null)
+                return false;
+
+            if (control == ocrResizeGrip)
+            {
+                resizeRight = true;
+                resizeBottom = true;
+                return true;
+            }
+
+            var margin = 8;
+            if (control == this)
+            {
+                var nearHorizontal = location.Y >= selectedBounds.Top - margin && location.Y <= selectedBounds.Bottom + margin;
+                var nearVertical = location.X >= selectedBounds.Left - margin && location.X <= selectedBounds.Right + margin;
+                resizeLeft = nearHorizontal && Math.Abs(location.X - selectedBounds.Left) <= margin;
+                resizeRight = nearHorizontal && Math.Abs(location.X - selectedBounds.Right) <= margin;
+                resizeTop = nearVertical && Math.Abs(location.Y - selectedBounds.Top) <= margin;
+                resizeBottom = nearVertical && Math.Abs(location.Y - selectedBounds.Bottom) <= margin;
+                return resizeLeft || resizeRight || resizeTop || resizeBottom;
+            }
+
+            resizeLeft = location.X <= margin;
+            resizeRight = location.X >= control.Width - margin;
+            resizeTop = location.Y <= margin;
+            resizeBottom = location.Y >= control.Height - margin;
+            return resizeLeft || resizeRight || resizeTop || resizeBottom;
+        }
+
+        private Cursor CursorForResizeEdges(bool active)
+        {
+            if (!active)
+                return Cursors.IBeam;
+            if ((resizeLeft && resizeTop) || (resizeRight && resizeBottom))
+                return Cursors.SizeNWSE;
+            if ((resizeRight && resizeTop) || (resizeLeft && resizeBottom))
+                return Cursors.SizeNESW;
+            if (resizeLeft || resizeRight)
+                return Cursors.SizeWE;
+            return Cursors.SizeNS;
+        }
+
+        private static string RemoveTextFormatting(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            return Regex.Replace(text, @"\s+", " ").Trim();
+        }
+
+        private string RecognizeImages(List<Bitmap> images)
+        {
+            var parts = new List<string>();
+            try
+            {
+                foreach (var image in images)
+                {
+                    using (image)
+                    {
+                        var text = recognizeText(image);
+                        if (!string.IsNullOrWhiteSpace(text))
+                            parts.Add(text);
+                    }
+                }
+            }
+            finally
+            {
+                foreach (var image in images)
+                    image.Dispose();
+            }
+
+            return string.Join(Environment.NewLine + Environment.NewLine, parts.ToArray());
+        }
+
         protected override void Dispose(bool disposing)
         {
-            if (disposing && screenshot != null)
-                screenshot.Dispose();
+            if (disposing)
+            {
+                if (screenshot != null)
+                    screenshot.Dispose();
+                if (selectedOriginalImage != null)
+                    selectedOriginalImage.Dispose();
+                if (editorCanvas != null)
+                    editorCanvas.Dispose();
+                if (inlineOcrBox != null)
+                    inlineOcrBox.Dispose();
+                if (ocrResizeGrip != null)
+                    ocrResizeGrip.Dispose();
+                if (toolTip != null)
+                    toolTip.Dispose();
+            }
             base.Dispose(disposing);
         }
 
@@ -407,9 +1262,18 @@ namespace ScreenshotHotkeyTool
             }
         }
 
+        private static int Clamp(int value, int min, int max)
+        {
+            if (value < min)
+                return min;
+            if (value > max)
+                return max;
+            return value;
+        }
+
         private void DrawHint(Graphics graphics)
         {
-            var text = "???????????? Esc ??";
+            var text = "拖动鼠标框选截图区域，按 Esc 取消";
             using (var font = new Font("Microsoft YaHei UI", 10))
             {
                 var size = graphics.MeasureString(text, font);
@@ -445,7 +1309,7 @@ namespace ScreenshotHotkeyTool
             this.settings = settings ?? HotkeySettings.Default();
             originalImage = (Bitmap)image.Clone();
 
-            Text = "????";
+            Text = "截图预览";
             AutoScaleMode = AutoScaleMode.None;
             StartPosition = FormStartPosition.CenterScreen;
             MinimizeBox = false;
@@ -461,17 +1325,17 @@ namespace ScreenshotHotkeyTool
                 BackColor = Color.FromArgb(245, 247, 250)
             };
 
-            var copyButton = new Button { Text = "??", Width = 78, Height = 30 };
-            var saveButton = new Button { Text = "??", Width = 78, Height = 30 };
-            var ocrButton = new Button { Text = "????", Width = 96, Height = 30 };
-            drawButton = new Button { Text = "??", Width = 78, Height = 30 };
-            var rectangleButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var copyButton = new Button { Text = "复制", Width = 78, Height = 30 };
+            var saveButton = new Button { Text = "保存", Width = 78, Height = 30 };
+            var ocrButton = new Button { Text = "识别文字", Width = 96, Height = 30 };
+            drawButton = new Button { Text = "画图", Width = 78, Height = 30 };
+            var rectangleButton = new Button { Text = "框选", Width = 78, Height = 30 };
             this.rectangleButton = rectangleButton;
-            textButton = new Button { Text = "??", Width = 78, Height = 30 };
-            arrowButton = new Button { Text = "??", Width = 78, Height = 30 };
-            var undoButton = new Button { Text = "??", Width = 78, Height = 30 };
-            var clearButton = new Button { Text = "??", Width = 78, Height = 30 };
-            var closeButton = new Button { Text = "??", Width = 78, Height = 30 };
+            textButton = new Button { Text = "文字", Width = 78, Height = 30 };
+            arrowButton = new Button { Text = "箭头", Width = 78, Height = 30 };
+            var undoButton = new Button { Text = "撤销", Width = 78, Height = 30 };
+            var clearButton = new Button { Text = "清空", Width = 78, Height = 30 };
+            var closeButton = new Button { Text = "关闭", Width = 78, Height = 30 };
 
             toolbar.Controls.Add(copyButton);
             toolbar.Controls.Add(saveButton);
@@ -496,7 +1360,7 @@ namespace ScreenshotHotkeyTool
                 Padding = new Padding(12, 5, 12, 0),
                 BackColor = Color.FromArgb(250, 250, 250),
                 ForeColor = Color.FromArgb(80, 80, 80),
-                Text = "????????????????????????"
+                Text = "未框选时识别整张截图；框选后识别最后一个框选区域"
             };
 
             Controls.Add(canvas);
@@ -506,7 +1370,7 @@ namespace ScreenshotHotkeyTool
             copyButton.Click += delegate
             {
                 Clipboard.SetImage((Bitmap)canvas.Image.Clone());
-                Text = "???? - ???????";
+                Text = "截图预览 - 已复制到剪贴板";
             };
 
             saveButton.Click += delegate
@@ -515,7 +1379,7 @@ namespace ScreenshotHotkeyTool
                 {
                     var path = saveImage(copy);
                     if (!string.IsNullOrEmpty(path))
-                        Text = "???? - ????" + path;
+                        Text = "截图预览 - 已保存：" + path;
                 }
             };
 
@@ -523,7 +1387,7 @@ namespace ScreenshotHotkeyTool
             {
                 var result = new OcrResultForm(RecognizeImages(canvas.GetImagesForOcr(originalImage)), settings);
                 result.Show();
-                statusLabel.Text = canvas.HasRectangleSelection ? "?????????" : "???????";
+                statusLabel.Text = canvas.HasRectangleSelection ? "已识别全部框选区域" : "已识别整张截图";
             };
 
             drawButton.Click += delegate
@@ -565,10 +1429,10 @@ namespace ScreenshotHotkeyTool
 
         private void UpdateToolButtons()
         {
-            drawButton.Text = canvas.Mode == AnnotationMode.Freehand ? "????" : "??";
-            rectangleButton.Text = canvas.Mode == AnnotationMode.Rectangle ? "????" : "??";
-            textButton.Text = canvas.Mode == AnnotationMode.Text ? "????" : "??";
-            arrowButton.Text = canvas.Mode == AnnotationMode.Arrow ? "????" : "??";
+            drawButton.Text = canvas.Mode == AnnotationMode.Freehand ? "停止画图" : "画图";
+            rectangleButton.Text = canvas.Mode == AnnotationMode.Rectangle ? "停止框选" : "框选";
+            textButton.Text = canvas.Mode == AnnotationMode.Text ? "停止文字" : "文字";
+            arrowButton.Text = canvas.Mode == AnnotationMode.Arrow ? "停止箭头" : "箭头";
             canvas.Cursor = canvas.Mode == AnnotationMode.None ? Cursors.Default : Cursors.Cross;
             UpdateStatus();
         }
@@ -576,15 +1440,15 @@ namespace ScreenshotHotkeyTool
         private void UpdateStatus()
         {
             if (canvas.Mode == AnnotationMode.Freehand)
-                statusLabel.Text = "????";
+                statusLabel.Text = "画图模式";
             else if (canvas.Mode == AnnotationMode.Rectangle)
-                statusLabel.Text = "??????????????????????????";
+                statusLabel.Text = "框选模式：可画多个区域，识别文字时会依次识别全部框选";
             else if (canvas.Mode == AnnotationMode.Text)
-                statusLabel.Text = "?????????????????????";
+                statusLabel.Text = "文字模式：拖动框选文字区域，松手后输入文字";
             else if (canvas.Mode == AnnotationMode.Arrow)
-                statusLabel.Text = "?????????????????????";
+                statusLabel.Text = "箭头模式：拖动设置箭头方向，松手后画出箭头";
             else
-                statusLabel.Text = canvas.HasRectangleSelection ? "???????????????????" : "??????????????????????";
+                statusLabel.Text = canvas.HasRectangleSelection ? "已有框选：识别文字时会依次识别全部框选" : "未框选时识别整张截图；框选后识别全部框选区域";
         }
 
         private string RecognizeImages(List<Bitmap> images)
@@ -635,7 +1499,7 @@ namespace ScreenshotHotkeyTool
 
         public TextAnnotationForm()
         {
-            Text = "????";
+            Text = "添加文字";
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -643,10 +1507,10 @@ namespace ScreenshotHotkeyTool
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(360, 136);
 
-            var label = new Label { Text = "????????????", Left = 14, Top = 14, Width = 320 };
+            var label = new Label { Text = "输入要添加到截图上的文字", Left = 14, Top = 14, Width = 320 };
             textBox = new TextBox { Left = 16, Top = 42, Width = 328 };
-            var okButton = new Button { Text = "??", Left = 186, Top = 92, Width = 76, DialogResult = DialogResult.OK };
-            var cancelButton = new Button { Text = "??", Left = 268, Top = 92, Width = 76, DialogResult = DialogResult.Cancel };
+            var okButton = new Button { Text = "确定", Left = 186, Top = 92, Width = 76, DialogResult = DialogResult.OK };
+            var cancelButton = new Button { Text = "取消", Left = 268, Top = 92, Width = 76, DialogResult = DialogResult.Cancel };
 
             Controls.Add(label);
             Controls.Add(textBox);
@@ -670,13 +1534,21 @@ namespace ScreenshotHotkeyTool
         private readonly string formattedText;
         private readonly HotkeySettings settings;
         private readonly ComboBox translationProviderBox;
+        private readonly Button translateToEnglishButton;
+        private readonly Button translateToChineseButton;
+        private const string TranslateToEnglishText = "转英文";
+        private const string TranslateToChineseText = "转中文";
+        private const string RestoreOriginalTextLabel = "复原原文";
+        private string textBeforeTranslation;
         private bool formatRemoved;
+        private bool formatRemovedBeforeTranslation;
+        private bool showingTranslation;
 
         public OcrResultForm(string text, HotkeySettings settings)
         {
             formattedText = text ?? string.Empty;
             this.settings = settings ?? HotkeySettings.Default();
-            Text = "??????";
+            Text = "文字识别结果";
             AutoScaleMode = AutoScaleMode.None;
             StartPosition = FormStartPosition.CenterScreen;
             MinimizeBox = false;
@@ -695,7 +1567,7 @@ namespace ScreenshotHotkeyTool
             {
                 Dock = DockStyle.Fill,
                 ForeColor = Color.FromArgb(65, 65, 65),
-                Text = string.IsNullOrWhiteSpace(text) ? "??????" : "??? " + text.Trim().Length + " ???"
+                Text = string.IsNullOrWhiteSpace(text) ? "未识别到文字" : "已识别 " + text.Trim().Length + " 个字符"
             };
 
             var toolbar = new FlowLayoutPanel
@@ -707,12 +1579,12 @@ namespace ScreenshotHotkeyTool
                 BackColor = Color.FromArgb(245, 247, 250)
             };
 
-            var closeButton = new Button { Text = "??", Width = 78, Height = 30 };
-            var saveButton = new Button { Text = "??", Width = 78, Height = 30 };
-            var copyButton = new Button { Text = "??", Width = 78, Height = 30 };
-            var formatButton = new Button { Text = "???", Width = 86, Height = 30 };
-            var translateToEnglishButton = new Button { Text = "??", Width = 78, Height = 30 };
-            var translateToChineseButton = new Button { Text = "??", Width = 78, Height = 30 };
+            var closeButton = new Button { Text = "关闭", Width = 78, Height = 30 };
+            var saveButton = new Button { Text = "保存", Width = 78, Height = 30 };
+            var copyButton = new Button { Text = "复制", Width = 78, Height = 30 };
+            var formatButton = new Button { Text = "去格式", Width = 86, Height = 30 };
+            translateToEnglishButton = new Button { Text = TranslateToEnglishText, Width = 78, Height = 30 };
+            translateToChineseButton = new Button { Text = TranslateToChineseText, Width = 78, Height = 30 };
             translationProviderBox = new ComboBox { Width = 90, Height = 30, DropDownStyle = ComboBoxStyle.DropDownList };
             translationProviderBox.Items.Add("Google");
             translationProviderBox.Items.Add("Baidu");
@@ -722,7 +1594,7 @@ namespace ScreenshotHotkeyTool
 
             var translationProviderLabel = new Label
             {
-                Text = "???",
+                Text = "翻译源",
                 AutoSize = true,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Padding = new Padding(0, 7, 0, 0),
@@ -757,7 +1629,7 @@ namespace ScreenshotHotkeyTool
             {
                 if (!string.IsNullOrEmpty(resultBox.Text))
                     Clipboard.SetText(resultBox.Text);
-                statusLabel.Text = "???????";
+                statusLabel.Text = "已复制到剪贴板";
             };
 
             formatButton.Click += delegate
@@ -766,15 +1638,17 @@ namespace ScreenshotHotkeyTool
                 {
                     resultBox.Text = formattedText;
                     formatRemoved = false;
-                    formatButton.Text = "???";
-                    statusLabel.Text = "?????";
+                    ClearTranslationState();
+                    formatButton.Text = "去格式";
+                    statusLabel.Text = "已复原格式";
                 }
                 else
                 {
                     resultBox.Text = RemoveTextFormatting(formattedText);
                     formatRemoved = true;
-                    formatButton.Text = "????";
-                    statusLabel.Text = "?????";
+                    ClearTranslationState();
+                    formatButton.Text = "复原格式";
+                    statusLabel.Text = "已去除格式";
                 }
             };
 
@@ -787,22 +1661,22 @@ namespace ScreenshotHotkeyTool
 
                 settings.TranslationProvider = Convert.ToString(translationProviderBox.SelectedItem);
                 settings.Save();
-                statusLabel.Text = "??????? " + settings.TranslationProvider;
+                statusLabel.Text = "翻译源已切换为 " + settings.TranslationProvider;
             };
 
             saveButton.Click += delegate
             {
                 using (var dialog = new SaveFileDialog())
                 {
-                    dialog.Title = "????";
-                    dialog.FileName = "????_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
-                    dialog.Filter = "???? (*.txt)|*.txt";
+                    dialog.Title = "保存文字";
+                    dialog.FileName = "识别文字_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
+                    dialog.Filter = "文本文件 (*.txt)|*.txt";
                     dialog.DefaultExt = "txt";
                     dialog.AddExtension = true;
                     if (dialog.ShowDialog() == DialogResult.OK)
                     {
                         File.WriteAllText(dialog.FileName, resultBox.Text);
-                        statusLabel.Text = "????" + dialog.FileName;
+                        statusLabel.Text = "已保存：" + dialog.FileName;
                     }
                 }
             };
@@ -812,16 +1686,24 @@ namespace ScreenshotHotkeyTool
 
         private void TranslateCurrentText(string targetLanguage, Button primaryButton, Button secondaryButton)
         {
-            var sourceText = resultBox.Text;
-            if (string.IsNullOrWhiteSpace(sourceText))
+            if (showingTranslation)
             {
-                statusLabel.Text = "????????";
+                RestoreOriginalText();
                 return;
             }
 
+            var sourceText = resultBox.Text;
+            if (string.IsNullOrWhiteSpace(sourceText))
+            {
+                statusLabel.Text = "没有可翻译的文字";
+                return;
+            }
+
+            textBeforeTranslation = sourceText;
+            formatRemovedBeforeTranslation = formatRemoved;
             primaryButton.Enabled = false;
             secondaryButton.Enabled = false;
-            statusLabel.Text = targetLanguage == "en" ? "???????..." : "???????...";
+            statusLabel.Text = targetLanguage == "en" ? "正在翻译为英文..." : "正在翻译为中文...";
 
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -842,15 +1724,44 @@ namespace ScreenshotHotkeyTool
                     secondaryButton.Enabled = true;
                     if (error != null)
                     {
-                        statusLabel.Text = "?????" + error.Message;
+                        ClearTranslationState();
+                        statusLabel.Text = "翻译失败：" + error.Message;
                         return;
                     }
 
                     resultBox.Text = translatedText;
                     formatRemoved = false;
-                    statusLabel.Text = targetLanguage == "en" ? "??????" : "??????";
+                    showingTranslation = true;
+                    SetTranslationButtonLabels(primaryButton);
+                    statusLabel.Text = targetLanguage == "en" ? "已翻译为英文" : "已翻译为中文";
                 });
             });
+        }
+
+        private void RestoreOriginalText()
+        {
+            if (textBeforeTranslation == null)
+                return;
+
+            resultBox.Text = textBeforeTranslation;
+            formatRemoved = formatRemovedBeforeTranslation;
+            ClearTranslationState();
+            statusLabel.Text = "已复原原文";
+        }
+
+        private void ClearTranslationState()
+        {
+            showingTranslation = false;
+            textBeforeTranslation = null;
+            SetTranslationButtonLabels(null);
+        }
+
+        private void SetTranslationButtonLabels(Button restoreButton)
+        {
+            translateToEnglishButton.Text = TranslateToEnglishText;
+            translateToChineseButton.Text = TranslateToChineseText;
+            if (restoreButton != null)
+                restoreButton.Text = RestoreOriginalTextLabel;
         }
 
         private static string RemoveTextFormatting(string text)
@@ -923,13 +1834,13 @@ namespace ScreenshotHotkeyTool
                 }
             }
 
-            throw new InvalidOperationException("?????????????" + string.Join("?", errors.ToArray()));
+            throw new InvalidOperationException("无法连接到可用的翻译服务：" + string.Join("；", errors.ToArray()));
         }
 
         private static string BaiduTranslate(string text, string targetLanguage, HotkeySettings settings)
         {
             if (settings == null || string.IsNullOrWhiteSpace(settings.BaiduAppId) || string.IsNullOrWhiteSpace(settings.BaiduSecretKey))
-                throw new InvalidOperationException("???????????? App ID ????");
+                throw new InvalidOperationException("请先在设置里填写百度翻译 App ID 和密钥。");
 
             var to = targetLanguage == "en" ? "en" : "zh";
             var salt = DateTime.UtcNow.Ticks.ToString();
@@ -999,7 +1910,7 @@ namespace ScreenshotHotkeyTool
             var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             var root = serializer.Deserialize<Dictionary<string, object>>(json);
             if (root.ContainsKey("error_code"))
-                throw new InvalidOperationException("?????? " + Convert.ToString(root["error_code"]) + "?" + (root.ContainsKey("error_msg") ? Convert.ToString(root["error_msg"]) : ""));
+                throw new InvalidOperationException("百度翻译错误 " + Convert.ToString(root["error_code"]) + "：" + (root.ContainsKey("error_msg") ? Convert.ToString(root["error_msg"]) : ""));
 
             var result = root.ContainsKey("trans_result") ? root["trans_result"] as System.Collections.ArrayList : null;
             if (result == null)
@@ -1068,7 +1979,7 @@ namespace ScreenshotHotkeyTool
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException("???? Tesseract OCR???????? tesseract.exe ????????" + ex.Message, ex);
+                throw new InvalidOperationException("请先安装 Tesseract OCR，或在设置里填写 tesseract.exe 路径。当前错误：" + ex.Message, ex);
             }
             finally
             {
@@ -1098,17 +2009,17 @@ namespace ScreenshotHotkeyTool
             using (var process = Process.Start(processInfo))
             {
                 if (process == null)
-                    throw new InvalidOperationException("???? OCR ???");
+                    throw new InvalidOperationException("无法启动 OCR 引擎。");
 
                 if (!process.WaitForExit(30000))
                 {
                     try { process.Kill(); } catch { }
-                    throw new TimeoutException("OCR ??????????????");
+                    throw new TimeoutException("OCR 超时，请缩小截图区域后重试。");
                 }
 
                 var error = process.StandardError.ReadToEnd();
                 if (process.ExitCode != 0)
-                    throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "OCR ???????" : error.Trim());
+                    throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "OCR 引擎返回失败。" : error.Trim());
             }
         }
 
@@ -1207,8 +2118,8 @@ namespace ScreenshotHotkeyTool
                 return string.Empty;
 
             var cleaned = Regex.Replace(text, @"(?<=[\u4e00-\u9fff])[\t ]+(?=[\u4e00-\u9fff])", string.Empty);
-            cleaned = Regex.Replace(cleaned, @"(?<=[\u4e00-\u9fff])[\t ]+(?=[??????????])", string.Empty);
-            cleaned = Regex.Replace(cleaned, @"(?<=[???])[\t ]+(?=[\u4e00-\u9fff])", string.Empty);
+            cleaned = Regex.Replace(cleaned, @"(?<=[\u4e00-\u9fff])[\t ]+(?=[，。！？；：、）】》])", string.Empty);
+            cleaned = Regex.Replace(cleaned, @"(?<=[（【《])[\t ]+(?=[\u4e00-\u9fff])", string.Empty);
             return cleaned;
         }
 
@@ -1393,6 +2304,80 @@ namespace ScreenshotHotkeyTool
         }
     }
 
+    internal sealed class InlineOcrTextControl : Panel
+    {
+        private const int TextPadding = 14;
+        private readonly Label textLabel;
+        private bool wordWrap = true;
+
+        public InlineOcrTextControl()
+        {
+            AutoScroll = true;
+            BorderStyle = BorderStyle.FixedSingle;
+            BackColor = Color.White;
+            ForeColor = Color.Black;
+
+            textLabel = new Label
+            {
+                AutoSize = true,
+                BackColor = Color.White,
+                ForeColor = Color.Black,
+                Location = new Point(TextPadding, TextPadding),
+                TextAlign = ContentAlignment.TopLeft,
+                UseMnemonic = false
+            };
+            Controls.Add(textLabel);
+        }
+
+        public bool WordWrap
+        {
+            get { return wordWrap; }
+            set
+            {
+                wordWrap = value;
+                UpdateLabelLayout();
+                Invalidate();
+            }
+        }
+
+        protected override void OnTextChanged(EventArgs e)
+        {
+            base.OnTextChanged(e);
+            AutoScrollPosition = Point.Empty;
+            UpdateLabelLayout();
+        }
+
+        protected override void OnFontChanged(EventArgs e)
+        {
+            base.OnFontChanged(e);
+            if (textLabel != null)
+                textLabel.Font = Font;
+            UpdateLabelLayout();
+        }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            UpdateLabelLayout();
+        }
+
+        private void UpdateLabelLayout()
+        {
+            if (textLabel == null || ClientSize.Width <= 0)
+                return;
+
+            var displayText = string.IsNullOrEmpty(Text) ? "未识别到文字" : Text;
+            textLabel.Text = displayText;
+            textLabel.Font = Font;
+            textLabel.ForeColor = ForeColor;
+            textLabel.BackColor = BackColor;
+            textLabel.Location = new Point(TextPadding, TextPadding);
+            textLabel.MaximumSize = wordWrap
+                ? new Size(Math.Max(20, ClientSize.Width - TextPadding * 2 - SystemInformation.VerticalScrollBarWidth), 0)
+                : Size.Empty;
+        }
+    }
+
     internal sealed class ImageCanvasControl : Control
     {
         private readonly Stack<Bitmap> undoStack = new Stack<Bitmap>();
@@ -1407,10 +2392,13 @@ namespace ScreenshotHotkeyTool
         private Rectangle lastRectangleSelection;
         private bool hasRectangleSelection;
         private bool isDrawing;
+        private int nextNumber = 1;
 
         public ImageCanvasControl(Bitmap image)
         {
             this.image = image;
+            StrokeColor = Color.Red;
+            StrokeWidth = 4;
             DoubleBuffered = true;
             BackColor = Color.FromArgb(34, 34, 34);
         }
@@ -1421,6 +2409,10 @@ namespace ScreenshotHotkeyTool
         }
 
         public AnnotationMode Mode { get; set; }
+
+        public Color StrokeColor { get; set; }
+
+        public int StrokeWidth { get; set; }
 
         public bool HasRectangleSelection
         {
@@ -1434,17 +2426,27 @@ namespace ScreenshotHotkeyTool
             e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
             e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
             e.Graphics.DrawImage(image, ImageBounds);
+            DrawFloatingScreenshotBorder(e.Graphics);
 
             if (Mode == AnnotationMode.Arrow && isDrawing)
                 DrawPreviewArrow(e.Graphics, rectangleStartControlPoint, rectangleCurrentControlPoint);
-            else if ((Mode == AnnotationMode.Rectangle || Mode == AnnotationMode.Text) && isDrawing)
+            else if ((Mode == AnnotationMode.Rectangle || Mode == AnnotationMode.Text || Mode == AnnotationMode.Mosaic) && isDrawing)
                 DrawPreviewRectangle(e.Graphics, rectangleStartControlPoint, rectangleCurrentControlPoint);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
+            base.OnMouseDown(e);
             if (Mode == AnnotationMode.None || e.Button != MouseButtons.Left)
                 return;
+
+            if (Mode == AnnotationMode.Number)
+            {
+                PushUndo(false);
+                DrawNumberAnnotation(ToImagePoint(e.Location));
+                Invalidate();
+                return;
+            }
 
             if (Mode != AnnotationMode.Text)
                 PushUndo(Mode == AnnotationMode.Rectangle);
@@ -1459,11 +2461,12 @@ namespace ScreenshotHotkeyTool
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
+            base.OnMouseMove(e);
             if (!isDrawing)
                 return;
 
             var nextPoint = ToImagePoint(e.Location);
-            if (Mode == AnnotationMode.Rectangle || Mode == AnnotationMode.Text || Mode == AnnotationMode.Arrow)
+            if (Mode == AnnotationMode.Rectangle || Mode == AnnotationMode.Text || Mode == AnnotationMode.Arrow || Mode == AnnotationMode.Mosaic)
             {
                 rectangleCurrentPoint = nextPoint;
                 rectangleCurrentControlPoint = e.Location;
@@ -1472,7 +2475,7 @@ namespace ScreenshotHotkeyTool
             }
 
             using (var graphics = Graphics.FromImage(image))
-            using (var pen = new Pen(Color.Red, Math.Max(3, image.Width / 220)))
+            using (var pen = new Pen(StrokeColor, CurrentStrokeWidth))
             {
                 graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 graphics.DrawLine(pen, lastImagePoint, nextPoint);
@@ -1484,6 +2487,7 @@ namespace ScreenshotHotkeyTool
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
+            base.OnMouseUp(e);
             if (Mode == AnnotationMode.Text && isDrawing)
             {
                 rectangleCurrentPoint = ToImagePoint(e.Location);
@@ -1535,6 +2539,16 @@ namespace ScreenshotHotkeyTool
                 return;
             }
 
+            if (isDrawing && Mode == AnnotationMode.Mosaic)
+            {
+                rectangleCurrentPoint = ToImagePoint(e.Location);
+                rectangleCurrentControlPoint = e.Location;
+                ApplyMosaic(NormalizeRectangle(rectangleStartPoint, rectangleCurrentPoint));
+                isDrawing = false;
+                Invalidate();
+                return;
+            }
+
             isDrawing = false;
         }
 
@@ -1558,6 +2572,7 @@ namespace ScreenshotHotkeyTool
             rectangleSelections.Clear();
             hasRectangleSelection = false;
             lastRectangleSelection = Rectangle.Empty;
+            nextNumber = 1;
             Invalidate();
         }
 
@@ -1657,7 +2672,7 @@ namespace ScreenshotHotkeyTool
             if (width < 2 || height < 2)
                 return;
 
-            using (var pen = new Pen(Color.Red, Math.Max(3, image.Width / 220)))
+            using (var pen = new Pen(StrokeColor, CurrentStrokeWidth))
             {
                 graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 graphics.DrawRectangle(pen, x, y, width, height);
@@ -1669,7 +2684,7 @@ namespace ScreenshotHotkeyTool
             if (Distance(first, second) < 4)
                 return;
 
-            using (var pen = CreateArrowPen(Math.Max(3, image.Width / 220)))
+            using (var pen = CreateArrowPen(CurrentStrokeWidth, StrokeColor))
             {
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 graphics.DrawLine(pen, first, second);
@@ -1684,7 +2699,7 @@ namespace ScreenshotHotkeyTool
 
             using (var graphics = Graphics.FromImage(image))
             using (var background = new SolidBrush(Color.FromArgb(190, Color.White)))
-            using (var foreground = new SolidBrush(Color.Red))
+            using (var foreground = new SolidBrush(StrokeColor))
             {
                 graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
@@ -1696,6 +2711,52 @@ namespace ScreenshotHotkeyTool
                     format.LineAlignment = StringAlignment.Center;
                     format.Trimming = StringTrimming.EllipsisCharacter;
                     graphics.DrawString(text, font, foreground, rectangle, format);
+                }
+            }
+        }
+
+        private void DrawNumberAnnotation(Point point)
+        {
+            var radius = Math.Max(12, CurrentStrokeWidth * 4);
+            var rectangle = new Rectangle(point.X - radius, point.Y - radius, radius * 2, radius * 2);
+            rectangle = ClampRectangle(rectangle, image.Width, image.Height);
+            using (var graphics = Graphics.FromImage(image))
+            using (var background = new SolidBrush(StrokeColor))
+            using (var foreground = new SolidBrush(Color.White))
+            using (var border = new Pen(Color.White, Math.Max(2, CurrentStrokeWidth / 2)))
+            using (var font = new Font("Arial", Math.Max(10, radius), FontStyle.Bold))
+            using (var format = new StringFormat())
+            {
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                format.Alignment = StringAlignment.Center;
+                format.LineAlignment = StringAlignment.Center;
+                graphics.FillEllipse(background, rectangle);
+                graphics.DrawEllipse(border, rectangle);
+                graphics.DrawString(nextNumber.ToString(), font, foreground, rectangle, format);
+            }
+            nextNumber++;
+        }
+
+        private void ApplyMosaic(Rectangle rectangle)
+        {
+            rectangle = ClampRectangle(rectangle, image.Width, image.Height);
+            if (rectangle.Width < 4 || rectangle.Height < 4)
+                return;
+
+            var blockSize = Math.Max(6, CurrentStrokeWidth * 2);
+            using (var graphics = Graphics.FromImage(image))
+            {
+                for (var y = rectangle.Top; y < rectangle.Bottom; y += blockSize)
+                {
+                    for (var x = rectangle.Left; x < rectangle.Right; x += blockSize)
+                    {
+                        var sampleX = Clamp(x + blockSize / 2, 0, image.Width - 1);
+                        var sampleY = Clamp(y + blockSize / 2, 0, image.Height - 1);
+                        using (var brush = new SolidBrush(image.GetPixel(sampleX, sampleY)))
+                        {
+                            graphics.FillRectangle(brush, x, y, Math.Min(blockSize, rectangle.Right - x), Math.Min(blockSize, rectangle.Bottom - y));
+                        }
+                    }
                 }
             }
         }
@@ -1784,7 +2845,7 @@ namespace ScreenshotHotkeyTool
             if (width < 2 || height < 2)
                 return;
 
-            using (var pen = new Pen(Color.Red, 3))
+            using (var pen = new Pen(StrokeColor, Math.Max(2, StrokeWidth)))
             {
                 graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 graphics.DrawRectangle(pen, x, y, width, height);
@@ -1803,16 +2864,35 @@ namespace ScreenshotHotkeyTool
             if (Distance(start, end) < 4)
                 return;
 
-            using (var pen = CreateArrowPen(3))
+            using (var pen = CreateArrowPen(Math.Max(2, StrokeWidth), StrokeColor))
             {
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 graphics.DrawLine(pen, start, end);
             }
         }
 
-        private static Pen CreateArrowPen(int width)
+        private void DrawFloatingScreenshotBorder(Graphics graphics)
         {
-            var pen = new Pen(Color.Red, width);
+            var bounds = ImageBounds;
+            if (bounds.Width < 2 || bounds.Height < 2)
+                return;
+
+            using (var outerPen = new Pen(Color.Black, 2))
+            using (var innerPen = new Pen(Color.FromArgb(230, Color.White), 1))
+            {
+                graphics.DrawRectangle(outerPen, bounds.X, bounds.Y, bounds.Width - 1, bounds.Height - 1);
+                graphics.DrawRectangle(innerPen, bounds.X + 2, bounds.Y + 2, Math.Max(1, bounds.Width - 5), Math.Max(1, bounds.Height - 5));
+            }
+        }
+
+        private int CurrentStrokeWidth
+        {
+            get { return StrokeWidth > 0 ? StrokeWidth : Math.Max(3, image.Width / 220); }
+        }
+
+        private static Pen CreateArrowPen(int width, Color color)
+        {
+            var pen = new Pen(color, width);
             pen.StartCap = LineCap.Round;
             pen.EndCap = LineCap.Custom;
             pen.CustomEndCap = new AdjustableArrowCap(width + 3, width + 5, true);
@@ -1844,7 +2924,9 @@ namespace ScreenshotHotkeyTool
         Freehand,
         Rectangle,
         Text,
-        Arrow
+        Arrow,
+        Number,
+        Mosaic
     }
 
     internal static class TrayIconFactory
@@ -1916,14 +2998,14 @@ namespace ScreenshotHotkeyTool
 
         public SettingsForm(HotkeySettings current)
         {
-            Text = "???????";
+            Text = "截图快捷键设置";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(430, 700);
 
-            var hotkeyTitle = new Label { Text = "?????", Left = 16, Top = 16, Width = 360 };
+            var hotkeyTitle = new Label { Text = "截图快捷键", Left = 16, Top = 16, Width = 360 };
             ctrlBox = new CheckBox { Text = "Ctrl", Left = 18, Top = 44, Width = 70 };
             shiftBox = new CheckBox { Text = "Shift", Left = 90, Top = 44, Width = 70 };
             altBox = new CheckBox { Text = "Alt", Left = 162, Top = 44, Width = 70 };
@@ -1933,22 +3015,22 @@ namespace ScreenshotHotkeyTool
             foreach (var key in HotkeySettings.AllowedKeys)
                 keyBox.Items.Add(key);
 
-            var saveDirectoryLabel = new Label { Text = "??????", Left = 16, Top = 118, Width = 360 };
+            var saveDirectoryLabel = new Label { Text = "截图保存位置", Left = 16, Top = 118, Width = 360 };
             saveDirectoryBox = new TextBox { Left = 18, Top = 144, Width = 305 };
-            var browseButton = new Button { Text = "??", Left = 330, Top = 142, Width = 78 };
+            var browseButton = new Button { Text = "浏览", Left = 330, Top = 142, Width = 78 };
             browseButton.Click += delegate
             {
                 using (var dialog = new FolderBrowserDialog())
                 {
-                    dialog.Description = "????????";
+                    dialog.Description = "选择截图保存位置";
                     dialog.SelectedPath = Directory.Exists(saveDirectoryBox.Text) ? saveDirectoryBox.Text : HotkeySettings.DefaultSaveDirectory();
                     if (dialog.ShowDialog() == DialogResult.OK)
                         saveDirectoryBox.Text = dialog.SelectedPath;
                 }
             };
 
-            var ocrTitle = new Label { Text = "OCR ????", Left = 16, Top = 190, Width = 360 };
-            ocrEnabledBox = new CheckBox { Text = "?? OCR ???", Left = 18, Top = 216, Width = 180 };
+            var ocrTitle = new Label { Text = "OCR 文字识别", Left = 16, Top = 190, Width = 360 };
+            ocrEnabledBox = new CheckBox { Text = "启用 OCR 快捷键", Left = 18, Top = 216, Width = 180 };
             ocrCtrlBox = new CheckBox { Text = "Ctrl", Left = 18, Top = 250, Width = 70 };
             ocrShiftBox = new CheckBox { Text = "Shift", Left = 90, Top = 250, Width = 70 };
             ocrAltBox = new CheckBox { Text = "Alt", Left = 162, Top = 250, Width = 70 };
@@ -1958,39 +3040,39 @@ namespace ScreenshotHotkeyTool
             foreach (var key in HotkeySettings.AllowedKeys)
                 ocrKeyBox.Items.Add(key);
 
-            var ocrLanguageLabel = new Label { Text = "????", Left = 16, Top = 324, Width = 360 };
+            var ocrLanguageLabel = new Label { Text = "识别语言", Left = 16, Top = 324, Width = 360 };
             ocrLanguageBox = new ComboBox { Left = 18, Top = 350, Width = 390, DropDownStyle = ComboBoxStyle.DropDown };
             ocrLanguageBox.Items.Add("chi_sim+eng");
             ocrLanguageBox.Items.Add("eng");
             ocrLanguageBox.Items.Add("chi_sim");
             ocrLanguageBox.Items.Add("chi_tra+eng");
 
-            var ocrEngineLabel = new Label { Text = "Tesseract ???????", Left = 16, Top = 390, Width = 360 };
+            var ocrEngineLabel = new Label { Text = "Tesseract 路径（可留空）", Left = 16, Top = 390, Width = 360 };
             ocrEnginePathBox = new TextBox { Left = 18, Top = 416, Width = 305 };
-            var ocrBrowseButton = new Button { Text = "??", Left = 330, Top = 414, Width = 78 };
+            var ocrBrowseButton = new Button { Text = "浏览", Left = 330, Top = 414, Width = 78 };
             ocrBrowseButton.Click += delegate
             {
                 using (var dialog = new OpenFileDialog())
                 {
-                    dialog.Title = "?? tesseract.exe";
-                    dialog.Filter = "Tesseract (*.exe)|*.exe|???? (*.*)|*.*";
+                    dialog.Title = "选择 tesseract.exe";
+                    dialog.Filter = "Tesseract (*.exe)|*.exe|所有文件 (*.*)|*.*";
                     if (dialog.ShowDialog() == DialogResult.OK)
                         ocrEnginePathBox.Text = dialog.FileName;
                 }
             };
 
-            var translationTitle = new Label { Text = "????", Left = 16, Top = 462, Width = 360 };
+            var translationTitle = new Label { Text = "翻译服务", Left = 16, Top = 462, Width = 360 };
             translationProviderBox = new ComboBox { Left = 18, Top = 488, Width = 390, DropDownStyle = ComboBoxStyle.DropDownList };
             translationProviderBox.Items.Add("Google");
             translationProviderBox.Items.Add("Baidu");
 
-            var baiduAppIdLabel = new Label { Text = "???? App ID", Left = 16, Top = 526, Width = 360 };
+            var baiduAppIdLabel = new Label { Text = "百度翻译 App ID", Left = 16, Top = 526, Width = 360 };
             baiduAppIdBox = new TextBox { Left = 18, Top = 552, Width = 390 };
-            var baiduSecretLabel = new Label { Text = "??????", Left = 16, Top = 584, Width = 360 };
+            var baiduSecretLabel = new Label { Text = "百度翻译密钥", Left = 16, Top = 584, Width = 360 };
             baiduSecretKeyBox = new TextBox { Left = 18, Top = 610, Width = 390, UseSystemPasswordChar = true };
 
-            saveButton = new Button { Text = "??", Left = 250, Top = 654, Width = 76, DialogResult = DialogResult.OK };
-            cancelButton = new Button { Text = "??", Left = 332, Top = 654, Width = 76, DialogResult = DialogResult.Cancel };
+            saveButton = new Button { Text = "保存", Left = 250, Top = 654, Width = 76, DialogResult = DialogResult.OK };
+            cancelButton = new Button { Text = "取消", Left = 332, Top = 654, Width = 76, DialogResult = DialogResult.Cancel };
 
             Controls.Add(hotkeyTitle);
             Controls.Add(ctrlBox);
@@ -2054,13 +3136,13 @@ namespace ScreenshotHotkeyTool
                 var selected = BuildSettings();
                 if (!selected.HasModifier)
                 {
-                    MessageBox.Show("???????????Ctrl?Shift?Alt ? Win?", "?????");
+                    MessageBox.Show("请至少选择一个组合键：Ctrl、Shift、Alt 或 Win。", "截图快捷键");
                     DialogResult = DialogResult.None;
                     return;
                 }
                 if (selected.OcrEnabled && !selected.HasOcrModifier)
                 {
-                    MessageBox.Show("??????? OCR ????Ctrl?Shift?Alt ? Win?", "?????");
+                    MessageBox.Show("请至少选择一个 OCR 组合键：Ctrl、Shift、Alt 或 Win。", "截图快捷键");
                     DialogResult = DialogResult.None;
                     return;
                 }
@@ -2071,7 +3153,7 @@ namespace ScreenshotHotkeyTool
                 }
                 catch
                 {
-                    MessageBox.Show("????????????????", "?????");
+                    MessageBox.Show("保存位置不可用，请换一个文件夹。", "截图快捷键");
                     DialogResult = DialogResult.None;
                     return;
                 }
@@ -2167,7 +3249,7 @@ namespace ScreenshotHotkeyTool
         {
             get
             {
-                return OcrEnabled ? DisplayTextFor(OcrModifiers, OcrKeyCode) : "???";
+                return OcrEnabled ? DisplayTextFor(OcrModifiers, OcrKeyCode) : "未启用";
             }
         }
 
