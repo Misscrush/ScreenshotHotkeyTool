@@ -337,6 +337,7 @@ namespace ScreenshotHotkeyTool
         private bool selecting;
         private bool editing;
         private bool movingSelectedImage;
+        private bool movingInlineOcrBox;
         private bool resizingSelectedImage;
         private bool resizingInlineOcrBox;
         private bool inlineOcrFormatRemoved;
@@ -1265,7 +1266,10 @@ namespace ScreenshotHotkeyTool
 
             var edges = GetInlineOcrResizeEdges(sender, e.Location);
             if (!edges)
+            {
+                BeginMoveInlineOcrBox(sender, e);
                 return;
+            }
 
             resizingInlineOcrBox = true;
             var sourceControl = sender as Control;
@@ -1277,7 +1281,14 @@ namespace ScreenshotHotkeyTool
         {
             if (!resizingInlineOcrBox && inlineOcrBox != null)
             {
-                var cursor = CursorForResizeEdges(GetInlineOcrResizeEdges(sender, e.Location));
+                if (movingInlineOcrBox)
+                {
+                    MoveInlineOcrBox(sender, e);
+                    return;
+                }
+
+                var active = GetInlineOcrResizeEdges(sender, e.Location);
+                var cursor = active ? CursorForResizeEdges(true) : Cursors.SizeAll;
                 if (sender == this)
                     Cursor = cursor;
                 else
@@ -1317,11 +1328,59 @@ namespace ScreenshotHotkeyTool
 
         private void EndResizeInlineOcrBox(object sender, MouseEventArgs e)
         {
+            if (!resizingInlineOcrBox)
+            {
+                if (movingInlineOcrBox)
+                    EndMoveInlineOcrBox(sender, e);
+                return;
+            }
+
             resizingInlineOcrBox = false;
             resizeLeft = false;
             resizeTop = false;
             resizeRight = false;
             resizeBottom = false;
+        }
+
+        private void BeginMoveInlineOcrBox(object sender, MouseEventArgs e)
+        {
+            var sourceControl = sender as Control;
+            if (sourceControl == null || sourceControl == ocrResizeGrip)
+                return;
+
+            movingInlineOcrBox = true;
+            moveStartPoint = PointToClient(sourceControl.PointToScreen(e.Location));
+            moveStartBounds = selectedBounds;
+            Cursor = Cursors.SizeAll;
+            inlineOcrBox.Cursor = Cursors.SizeAll;
+        }
+
+        private void MoveInlineOcrBox(object sender, MouseEventArgs e)
+        {
+            if (!movingInlineOcrBox || inlineOcrBox == null)
+                return;
+
+            var sourceControl = sender as Control;
+            var currentPoint = PointToClient(sourceControl.PointToScreen(e.Location));
+            var dx = currentPoint.X - moveStartPoint.X;
+            var dy = currentPoint.Y - moveStartPoint.Y;
+            var left = Clamp(moveStartBounds.Left + dx, 0, Math.Max(0, ClientSize.Width - moveStartBounds.Width));
+            var top = Clamp(moveStartBounds.Top + dy, 0, Math.Max(0, ClientSize.Height - moveStartBounds.Height));
+
+            selectedBounds = new Rectangle(left, top, moveStartBounds.Width, moveStartBounds.Height);
+            inlineOcrBox.Bounds = selectedBounds;
+            ocrResizeGrip.Bounds = ResizeGripBounds();
+            PositionFloatingToolbars();
+            UpdateOverlayRegion();
+            Invalidate();
+        }
+
+        private void EndMoveInlineOcrBox(object sender, MouseEventArgs e)
+        {
+            movingInlineOcrBox = false;
+            Cursor = Cursors.Default;
+            if (inlineOcrBox != null)
+                inlineOcrBox.Cursor = Cursors.SizeAll;
         }
 
         private bool GetInlineOcrResizeEdges(object sender, Point location)

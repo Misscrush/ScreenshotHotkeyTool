@@ -163,6 +163,14 @@ if ($source -notmatch 'BeginResizeInlineOcrBox') {
     throw 'Inline OCR result should start resizing from the resize grip.'
 }
 
+if ($source -notmatch 'BeginMoveInlineOcrBox') {
+    throw 'Inline OCR result should move when dragging inside the text box.'
+}
+
+if ($source -notmatch 'MoveInlineOcrBox') {
+    throw 'Inline OCR result should update position while dragging inside the text box.'
+}
+
 if ($source -notmatch 'ResizeInlineOcrBox') {
     throw 'Inline OCR result should resize while dragging the resize grip.'
 }

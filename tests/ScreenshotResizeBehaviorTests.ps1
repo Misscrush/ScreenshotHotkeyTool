@@ -56,9 +56,15 @@ try {
     $beginResize = $formType.GetMethod('BeginResizeSelectedImage', $bindingFlags)
     $resize = $formType.GetMethod('ResizeSelectedImage', $bindingFlags)
     $endResize = $formType.GetMethod('EndResizeSelectedImage', $bindingFlags)
+    $showInlineOcr = $formType.GetMethod('ShowInlineOcrResult', $bindingFlags)
+    $beginOcrBoxDrag = $formType.GetMethod('BeginResizeInlineOcrBox', $bindingFlags)
+    $moveOcrBox = $formType.GetMethod('ResizeInlineOcrBox', $bindingFlags)
+    $endOcrBoxDrag = $formType.GetMethod('EndResizeInlineOcrBox', $bindingFlags)
     $selectedField = $formType.GetField('selectedBounds', $bindingFlags)
     $canvasField = $formType.GetField('editorCanvas', $bindingFlags)
+    $ocrBoxField = $formType.GetField('inlineOcrBox', $bindingFlags)
     $movingField = $formType.GetField('movingSelectedImage', $bindingFlags)
+    $movingOcrField = $formType.GetField('movingInlineOcrBox', $bindingFlags)
     $toolbarField = $formType.GetField('editorToolbar', $bindingFlags)
 
     $beginInlineArgs = [object[]]::new(1)
@@ -118,6 +124,36 @@ try {
     $windowAfterMove = [System.Drawing.Rectangle]$form.Bounds
     if ($windowAfterMove.Left -eq $windowBeforeMove.Left -and $windowAfterMove.Top -eq $windowBeforeMove.Top) {
         throw "Dragging inside the screenshot did not move the floating editor. Before=$windowBeforeMove After=$windowAfterMove"
+    }
+
+    $showOcrArgs = [object[]]::new(1)
+    $showOcrArgs[0] = "Line one`r`nLine two"
+    $showInlineOcr.Invoke($form, $showOcrArgs)
+    [System.Windows.Forms.Application]::DoEvents()
+
+    $ocrBox = $ocrBoxField.GetValue($form)
+    $ocrBeforeMove = [System.Drawing.Rectangle]$selectedField.GetValue($form)
+    $ocrMoveX = [Math]::Max(20, [int]($ocrBeforeMove.Width / 2))
+    $ocrMoveY = [Math]::Max(20, [int]($ocrBeforeMove.Height / 2))
+    $ocrMoveDown = New-Object System.Windows.Forms.MouseEventArgs -ArgumentList ([System.Windows.Forms.MouseButtons]::Left), 1, $ocrMoveX, $ocrMoveY, 0
+    $ocrMoveDrag = New-Object System.Windows.Forms.MouseEventArgs -ArgumentList ([System.Windows.Forms.MouseButtons]::Left), 1, ($ocrMoveX + 35), ($ocrMoveY + 25), 0
+    $ocrMoveUp = New-Object System.Windows.Forms.MouseEventArgs -ArgumentList ([System.Windows.Forms.MouseButtons]::Left), 1, ($ocrMoveX + 35), ($ocrMoveY + 25), 0
+    $ocrDragArgs = [object[]]::new(2)
+    $ocrDragArgs[0] = [System.Windows.Forms.Control]$ocrBox
+    $ocrDragArgs[1] = [System.Windows.Forms.MouseEventArgs]$ocrMoveDown
+    $beginOcrBoxDrag.Invoke($form, $ocrDragArgs)
+    if (-not [bool]$movingOcrField.GetValue($form)) {
+        throw "Dragging inside the OCR text box did not enter move mode. Selected=$ocrBeforeMove Point=($ocrMoveX,$ocrMoveY)"
+    }
+    $ocrDragArgs[1] = [System.Windows.Forms.MouseEventArgs]$ocrMoveDrag
+    $moveOcrBox.Invoke($form, $ocrDragArgs)
+    $ocrDragArgs[1] = [System.Windows.Forms.MouseEventArgs]$ocrMoveUp
+    $endOcrBoxDrag.Invoke($form, $ocrDragArgs)
+    [System.Windows.Forms.Application]::DoEvents()
+
+    $ocrAfterMove = [System.Drawing.Rectangle]$selectedField.GetValue($form)
+    if ($ocrAfterMove.Left -eq $ocrBeforeMove.Left -and $ocrAfterMove.Top -eq $ocrBeforeMove.Top) {
+        throw "Dragging inside the OCR text box did not move it. Before=$ocrBeforeMove After=$ocrAfterMove"
     }
 }
 finally {
