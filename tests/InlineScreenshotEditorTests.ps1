@@ -59,8 +59,12 @@ if ($source -notmatch 'ShowEditorToolbars') {
     throw 'Clicking the floating screenshot should show screenshot actions.'
 }
 
-if ($source -notmatch 'selectedBounds\.Contains\(e\.Location\)[\s\S]*BeginMoveSelectedImage\(this, e\)') {
-    throw 'Parent floating overlay should also handle clicks on the screenshot area.'
+if ($source -notmatch 'selectedBounds\.Contains\(e\.Location\)[\s\S]*BeginResizeSelectedImage\(this, e\)') {
+    throw 'Parent floating overlay should also handle clicks and edge resizing on the screenshot area.'
+}
+
+if ($source -notmatch 'editorCanvas\.MouseDown \+= BeginResizeSelectedImage;') {
+    throw 'Floating screenshot should route mouse down through resize handling before moving.'
 }
 
 if ($source -notmatch 'CreateEditorToolbar') {
@@ -169,6 +173,22 @@ if ($source -notmatch 'BeginMoveSelectedImage') {
 
 if ($source -notmatch 'MoveSelectedImage') {
     throw 'Dragging the selected screenshot should move the inline editor surface.'
+}
+
+if ($source -notmatch 'BeginResizeSelectedImage') {
+    throw 'Selected screenshot should start resizing from its edges or corners.'
+}
+
+if ($source -notmatch 'ResizeSelectedImage') {
+    throw 'Selected screenshot should resize while dragging an edge or corner.'
+}
+
+if ($source -notmatch 'GetSelectedImageResizeEdges') {
+    throw 'Selected screenshot should detect resize edges and corners.'
+}
+
+if ($source -notmatch 'ResizeFloatingEditorWindow') {
+    throw 'Floating editor window should resize with the selected screenshot.'
 }
 
 if ($source -notmatch 'TranslateInlineOcrText') {

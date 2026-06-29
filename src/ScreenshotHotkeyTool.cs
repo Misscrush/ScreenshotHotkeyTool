@@ -337,6 +337,7 @@ namespace ScreenshotHotkeyTool
         private bool selecting;
         private bool editing;
         private bool movingSelectedImage;
+        private bool resizingSelectedImage;
         private bool resizingInlineOcrBox;
         private bool inlineOcrFormatRemoved;
         private bool inlineOcrShowingTranslation;
@@ -347,6 +348,7 @@ namespace ScreenshotHotkeyTool
         private Rectangle selectedBounds;
         private Rectangle moveStartBounds;
         private Rectangle resizeStartBounds;
+        private Rectangle resizeStartWindowBounds;
         private Point moveStartPoint;
         private Point resizeStartPoint;
         private string inlineOcrFormattedText;
@@ -442,7 +444,7 @@ namespace ScreenshotHotkeyTool
                 if (inlineOcrBox != null)
                     BeginResizeInlineOcrBox(this, e);
                 else if (selectedBounds.Contains(e.Location))
-                    BeginMoveSelectedImage(this, e);
+                    BeginResizeSelectedImage(this, e);
                 return;
             }
 
@@ -461,8 +463,12 @@ namespace ScreenshotHotkeyTool
             {
                 if (inlineOcrBox != null)
                     ResizeInlineOcrBox(this, e);
+                else if (resizingSelectedImage)
+                    ResizeSelectedImage(this, e);
                 else if (movingSelectedImage)
                     MoveSelectedImage(this, e);
+                else
+                    UpdateSelectedImageResizeCursor(this, e.Location);
                 return;
             }
 
@@ -479,6 +485,8 @@ namespace ScreenshotHotkeyTool
             {
                 if (inlineOcrBox != null)
                     EndResizeInlineOcrBox(this, e);
+                else if (resizingSelectedImage)
+                    EndResizeSelectedImage(this, e);
                 else if (movingSelectedImage)
                     EndMoveSelectedImage(this, e);
                 return;
@@ -533,9 +541,9 @@ namespace ScreenshotHotkeyTool
                 BackColor = Color.White,
                 Cursor = Cursors.SizeAll
             };
-            editorCanvas.MouseDown += BeginMoveSelectedImage;
-            editorCanvas.MouseMove += MoveSelectedImage;
-            editorCanvas.MouseUp += EndMoveSelectedImage;
+            editorCanvas.MouseDown += BeginResizeSelectedImage;
+            editorCanvas.MouseMove += ResizeSelectedImage;
+            editorCanvas.MouseUp += EndResizeSelectedImage;
 
             editorToolbar = CreateEditorToolbar();
             styleToolbar = CreateStyleToolbar();
@@ -891,6 +899,141 @@ namespace ScreenshotHotkeyTool
             movingSelectedImage = false;
             if (editorCanvas != null)
                 editorCanvas.Cursor = editorCanvas.Mode == AnnotationMode.None ? Cursors.SizeAll : Cursors.Cross;
+        }
+
+        private void BeginResizeSelectedImage(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left || editorCanvas == null || editorCanvas.Mode != AnnotationMode.None || inlineOcrBox != null)
+                return;
+
+            if (!GetSelectedImageResizeEdges(sender, e.Location))
+            {
+                BeginMoveSelectedImage(sender, e);
+                return;
+            }
+
+            ShowEditorToolbars();
+            resizingSelectedImage = true;
+            var sourceControl = sender as Control;
+            resizeStartPoint = sourceControl.PointToScreen(e.Location);
+            resizeStartBounds = selectedBounds;
+            resizeStartWindowBounds = Bounds;
+            Cursor = CursorForResizeEdges(true);
+            editorCanvas.Cursor = Cursor;
+        }
+
+        private void ResizeSelectedImage(object sender, MouseEventArgs e)
+        {
+            if (editorCanvas == null)
+                return;
+
+            if (!resizingSelectedImage)
+            {
+                if (movingSelectedImage)
+                    MoveSelectedImage(sender, e);
+                else
+                    UpdateSelectedImageResizeCursor(sender, e.Location);
+                return;
+            }
+
+            var sourceControl = sender as Control;
+            var currentPoint = sourceControl.PointToScreen(e.Location);
+            var dx = currentPoint.X - resizeStartPoint.X;
+            var dy = currentPoint.Y - resizeStartPoint.Y;
+            var imageLeft = resizeStartWindowBounds.Left + resizeStartBounds.Left;
+            var imageTop = resizeStartWindowBounds.Top + resizeStartBounds.Top;
+            var left = imageLeft;
+            var top = imageTop;
+            var right = imageLeft + resizeStartBounds.Width;
+            var bottom = imageTop + resizeStartBounds.Height;
+            const int minWidth = 160;
+            const int minHeight = 90;
+            const int toolbarReserve = 96;
+
+            if (resizeLeft)
+                left = Clamp(imageLeft + dx, virtualBounds.Left, right - minWidth);
+            if (resizeTop)
+                top = Clamp(imageTop + dy, virtualBounds.Top, bottom - minHeight);
+            if (resizeRight)
+                right = Clamp(right + dx, left + minWidth, virtualBounds.Right);
+            if (resizeBottom)
+                bottom = Clamp(bottom + dy, top + minHeight, virtualBounds.Bottom - toolbarReserve);
+
+            ResizeFloatingEditorWindow(new Rectangle(left, top, right - left, bottom - top), toolbarReserve);
+        }
+
+        private void EndResizeSelectedImage(object sender, MouseEventArgs e)
+        {
+            if (!resizingSelectedImage)
+            {
+                if (movingSelectedImage)
+                    EndMoveSelectedImage(sender, e);
+                return;
+            }
+
+            resizingSelectedImage = false;
+            resizeLeft = false;
+            resizeTop = false;
+            resizeRight = false;
+            resizeBottom = false;
+            Cursor = Cursors.Default;
+            if (editorCanvas != null)
+                editorCanvas.Cursor = editorCanvas.Mode == AnnotationMode.None ? Cursors.SizeAll : Cursors.Cross;
+        }
+
+        private void ResizeFloatingEditorWindow(Rectangle imageScreenBounds, int toolbarReserve)
+        {
+            var windowWidth = Math.Min(virtualBounds.Width, Math.Max(imageScreenBounds.Width, 360));
+            var windowHeight = Math.Min(virtualBounds.Height, imageScreenBounds.Height + toolbarReserve);
+            var left = Clamp(imageScreenBounds.Left, virtualBounds.Left, Math.Max(virtualBounds.Left, virtualBounds.Right - windowWidth));
+            var top = Clamp(imageScreenBounds.Top, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - windowHeight));
+
+            Bounds = new Rectangle(left, top, windowWidth, windowHeight);
+            selectedBounds = new Rectangle(
+                Math.Max(0, imageScreenBounds.Left - left),
+                Math.Max(0, imageScreenBounds.Top - top),
+                imageScreenBounds.Width,
+                imageScreenBounds.Height);
+            editorCanvas.Bounds = selectedBounds;
+            PositionFloatingToolbars();
+            UpdateOverlayRegion();
+            Invalidate();
+        }
+
+        private void UpdateSelectedImageResizeCursor(object sender, Point location)
+        {
+            if (editorCanvas == null || editorCanvas.Mode != AnnotationMode.None || inlineOcrBox != null)
+                return;
+
+            var active = GetSelectedImageResizeEdges(sender, location);
+            var cursor = active ? CursorForResizeEdges(true) : Cursors.SizeAll;
+            Cursor = cursor;
+            editorCanvas.Cursor = cursor;
+        }
+
+        private bool GetSelectedImageResizeEdges(object sender, Point location)
+        {
+            resizeLeft = false;
+            resizeTop = false;
+            resizeRight = false;
+            resizeBottom = false;
+
+            var control = sender as Control;
+            if (control == null)
+                return false;
+
+            Point point = location;
+            if (control != this)
+                point = PointToClient(control.PointToScreen(location));
+
+            const int margin = 10;
+            var nearHorizontal = point.Y >= selectedBounds.Top - margin && point.Y <= selectedBounds.Bottom + margin;
+            var nearVertical = point.X >= selectedBounds.Left - margin && point.X <= selectedBounds.Right + margin;
+            resizeLeft = nearHorizontal && Math.Abs(point.X - selectedBounds.Left) <= margin;
+            resizeRight = nearHorizontal && Math.Abs(point.X - selectedBounds.Right) <= margin;
+            resizeTop = nearVertical && Math.Abs(point.Y - selectedBounds.Top) <= margin;
+            resizeBottom = nearVertical && Math.Abs(point.Y - selectedBounds.Bottom) <= margin;
+            return resizeLeft || resizeRight || resizeTop || resizeBottom;
         }
 
         private void SetStrokeWidth(int width)
