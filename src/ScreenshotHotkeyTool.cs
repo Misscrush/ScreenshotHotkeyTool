@@ -804,7 +804,11 @@ namespace ScreenshotHotkeyTool
             var mainToolbar = ocrToolbar ?? editorToolbar;
             var toolbarSize = mainToolbar.GetPreferredSize(Size.Empty);
             var styleSize = styleToolbar.GetPreferredSize(Size.Empty);
-            var toolbarX = Clamp(selectedBounds.Left + (selectedBounds.Width - toolbarSize.Width) / 2, 8, ClientSize.Width - toolbarSize.Width - 8);
+            EnsureFloatingWindowCanFitToolbars(toolbarSize, styleSize);
+
+            toolbarSize = mainToolbar.GetPreferredSize(Size.Empty);
+            styleSize = styleToolbar.GetPreferredSize(Size.Empty);
+            var toolbarX = Clamp(selectedBounds.Left + (selectedBounds.Width - toolbarSize.Width) / 2, 8, Math.Max(8, ClientSize.Width - toolbarSize.Width - 8));
             var toolbarY = selectedBounds.Bottom + 10;
             if (toolbarY + toolbarSize.Height + styleSize.Height + 18 > ClientSize.Height)
                 toolbarY = Math.Max(8, selectedBounds.Top - toolbarSize.Height - styleSize.Height - 18);
@@ -813,10 +817,39 @@ namespace ScreenshotHotkeyTool
             if (styleToolbar != null)
             {
                 styleToolbar.Location = new Point(
-                    Clamp(selectedBounds.Left + (selectedBounds.Width - styleSize.Width) / 2, 8, ClientSize.Width - styleSize.Width - 8),
+                    Clamp(selectedBounds.Left + (selectedBounds.Width - styleSize.Width) / 2, 8, Math.Max(8, ClientSize.Width - styleSize.Width - 8)),
                     toolbarY + toolbarSize.Height + 8);
             }
             UpdateOverlayRegion();
+        }
+
+        private void EnsureFloatingWindowCanFitToolbars(Size toolbarSize, Size styleSize)
+        {
+            var requiredWidth = Math.Max(selectedBounds.Width, Math.Max(toolbarSize.Width, styleSize.Width) + 16);
+            if (ClientSize.Width >= requiredWidth || Width >= virtualBounds.Width)
+                return;
+
+            var imageScreenLeft = Left + selectedBounds.Left;
+            var imageScreenTop = Top + selectedBounds.Top;
+            var newWidth = Math.Min(virtualBounds.Width, requiredWidth);
+            var newLeft = Clamp(
+                imageScreenLeft + selectedBounds.Width / 2 - newWidth / 2,
+                virtualBounds.Left,
+                Math.Max(virtualBounds.Left, virtualBounds.Right - newWidth));
+
+            Bounds = new Rectangle(newLeft, Top, newWidth, Height);
+            selectedBounds = new Rectangle(
+                Math.Max(0, imageScreenLeft - newLeft),
+                Math.Max(0, imageScreenTop - Top),
+                selectedBounds.Width,
+                selectedBounds.Height);
+
+            if (editorCanvas != null)
+                editorCanvas.Bounds = selectedBounds;
+            if (inlineOcrBox != null)
+                inlineOcrBox.Bounds = selectedBounds;
+            if (ocrResizeGrip != null)
+                ocrResizeGrip.Bounds = ResizeGripBounds();
         }
 
         private void UpdateOverlayRegion()

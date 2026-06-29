@@ -75,6 +75,14 @@ if ($source -notmatch 'CreateStyleToolbar') {
     throw 'Inline screenshot editor should create a secondary style toolbar.'
 }
 
+if ($source -notmatch 'EnsureFloatingWindowCanFitToolbars') {
+    throw 'Floating editor should expand wide enough to show the full toolbar.'
+}
+
+if ($source -notmatch 'Math\.Max\(8, ClientSize\.Width - toolbarSize\.Width - 8\)') {
+    throw 'Floating toolbar placement should not use a negative right boundary.'
+}
+
 if ($source -notmatch 'ToolTip') {
     throw 'Inline screenshot editor should create tooltips for toolbar icons.'
 }

@@ -32,7 +32,7 @@ if ($null -eq $constructor) {
     throw 'SelectionOverlayForm inline constructor was not found.'
 }
 
-$screenshot = New-Object System.Drawing.Bitmap 500, 360
+$screenshot = New-Object System.Drawing.Bitmap 900, 520
 $graphics = [System.Drawing.Graphics]::FromImage($screenshot)
 $graphics.Clear([System.Drawing.Color]::White)
 $graphics.Dispose()
@@ -40,7 +40,7 @@ $graphics.Dispose()
 $saveImage = [System.Func[System.Drawing.Bitmap,string]] { param($bitmap) return '' }
 $recognizeText = [System.Func[System.Drawing.Bitmap,string]] { param($bitmap) return '' }
 $constructorArgs = [object[]]::new(6)
-$constructorArgs[0] = [System.Drawing.Rectangle]::new(0, 0, 500, 360)
+$constructorArgs[0] = [System.Drawing.Rectangle]::new(0, 0, 900, 520)
 $constructorArgs[1] = [System.Drawing.Bitmap]$screenshot
 $constructorArgs[2] = $saveImage
 $constructorArgs[3] = $recognizeText
@@ -59,6 +59,7 @@ try {
     $selectedField = $formType.GetField('selectedBounds', $bindingFlags)
     $canvasField = $formType.GetField('editorCanvas', $bindingFlags)
     $movingField = $formType.GetField('movingSelectedImage', $bindingFlags)
+    $toolbarField = $formType.GetField('editorToolbar', $bindingFlags)
 
     $beginInlineArgs = [object[]]::new(1)
     $beginInlineArgs[0] = [System.Drawing.Rectangle]::new(20, 20, 220, 120)
@@ -66,6 +67,11 @@ try {
     [System.Windows.Forms.Application]::DoEvents()
 
     $canvas = $canvasField.GetValue($form)
+    $toolbar = $toolbarField.GetValue($form)
+    if ($toolbar.Right -gt $form.ClientSize.Width) {
+        throw "Editor toolbar is clipped. Toolbar=$($toolbar.Bounds) ClientWidth=$($form.ClientSize.Width)"
+    }
+
     $before = [System.Drawing.Rectangle]$selectedField.GetValue($form)
 
     $down = New-Object System.Windows.Forms.MouseEventArgs ([System.Windows.Forms.MouseButtons]::Left), 1, ($before.Width - 1), ($before.Height - 1), 0
