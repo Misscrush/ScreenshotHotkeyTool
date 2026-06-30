@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 $source = Get-Content -LiteralPath (Join-Path $root 'src\ScreenshotHotkeyTool.cs') -Raw -Encoding UTF8
+$inlineStartMethod = [regex]::Match($source, 'private void StartScreenshotEditorSelection[\s\S]*?private void StartSelection').Value
 
 if ($source -notmatch 'StartScreenshotEditorSelection') {
     throw 'Screenshot hotkey should start the inline editor selection flow.'
@@ -21,6 +22,14 @@ if ($source -match 'private void TriggerOcr\(\)[\s\S]*StartSelection\(RecognizeC
 
 if ($source -notmatch 'new SelectionOverlayForm\(bounds, screenshot, SaveBitmap, RecognizeText, settings, recognizeImmediately\)') {
     throw 'Screenshot selection should open the overlay in inline editing mode.'
+}
+
+if ($inlineStartMethod -notmatch 'overlay\.Show\(\);') {
+    throw 'Screenshot and OCR inline overlay should be shown non-modally after hotkey capture.'
+}
+
+if ($inlineStartMethod -match 'overlay\.ShowDialog\(\);') {
+    throw 'Screenshot and OCR inline overlay should not block other work with ShowDialog.'
 }
 
 if ($source -notmatch 'BeginInlineEditing') {
@@ -43,8 +52,12 @@ if ($source -notmatch 'selection\.Height \+ toolbarReserve') {
     throw 'Floating editor should resize to a small window around the captured image and toolbar.'
 }
 
-if ($source -notmatch 'Region = null') {
-    throw 'Floating editor should avoid region clipping so OCR text remains visible.'
+if ($source -notmatch 'Region = new Region\(path\)') {
+    throw 'Floating editor should restrict its clickable area to visible controls.'
+}
+
+if ($source -notmatch 'AddVisibleControlToRegion\(path, inlineOcrBox\)') {
+    throw 'Floating editor region should include the OCR text box.'
 }
 
 if ($source -notmatch 'DrawFloatingScreenshotBorder') {

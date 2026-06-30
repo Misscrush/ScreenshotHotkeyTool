@@ -77,6 +77,12 @@ try {
     if ($toolbar.Right -gt $form.ClientSize.Width) {
         throw "Editor toolbar is clipped. Toolbar=$($toolbar.Bounds) ClientWidth=$($form.ClientSize.Width)"
     }
+    if ($null -eq $form.Region) {
+        throw 'Floating screenshot editor should use a window region so transparent empty areas do not block other apps.'
+    }
+    if ($form.Region.IsVisible($form.ClientSize.Width - 1, $form.ClientSize.Height - 1)) {
+        throw 'Floating screenshot editor transparent corner should be outside the clickable window region.'
+    }
 
     $before = [System.Drawing.Rectangle]$selectedField.GetValue($form)
 

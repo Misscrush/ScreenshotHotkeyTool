@@ -178,23 +178,34 @@ namespace ScreenshotHotkeyTool
             isCapturing = true;
             File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "last-trigger.txt"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
 
+            Bitmap screenshot = null;
             try
             {
                 var bounds = SystemInformation.VirtualScreen;
-                var screenshot = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
+                screenshot = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
                 using (var graphics = Graphics.FromImage(screenshot))
                 {
                     graphics.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
                 }
 
-                using (var overlay = new SelectionOverlayForm(bounds, screenshot, SaveBitmap, RecognizeText, settings, recognizeImmediately))
+                var overlay = new SelectionOverlayForm(bounds, screenshot, SaveBitmap, RecognizeText, settings, recognizeImmediately);
+                overlay.FormClosed += delegate
                 {
-                    overlay.ShowDialog();
-                }
+                    overlay.Dispose();
+                    isCapturing = false;
+                };
+                overlay.Show();
+                screenshot = null;
+            }
+            catch
+            {
+                if (screenshot != null)
+                    screenshot.Dispose();
+                isCapturing = false;
+                throw;
             }
             finally
             {
-                isCapturing = false;
             }
         }
 
@@ -863,6 +874,20 @@ namespace ScreenshotHotkeyTool
                 var oldRegion = Region;
                 Region = null;
                 oldRegion.Dispose();
+            }
+
+            using (var path = new GraphicsPath())
+            {
+                var selectedRegion = selectedBounds;
+                selectedRegion.Inflate(4, 4);
+                path.AddRectangle(selectedRegion);
+                AddVisibleControlToRegion(path, editorCanvas);
+                AddVisibleControlToRegion(path, inlineOcrBox);
+                AddVisibleControlToRegion(path, ocrResizeGrip);
+                AddVisibleControlToRegion(path, editorToolbar);
+                AddVisibleControlToRegion(path, ocrToolbar);
+                AddVisibleControlToRegion(path, styleToolbar);
+                Region = new Region(path);
             }
         }
 
