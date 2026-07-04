@@ -138,6 +138,26 @@ try {
     [System.Windows.Forms.Application]::DoEvents()
 
     $ocrBox = $ocrBoxField.GetValue($form)
+    $ocrBitmap = New-Object System.Drawing.Bitmap $ocrBox.Width, $ocrBox.Height
+    try {
+        $ocrBox.DrawToBitmap($ocrBitmap, [System.Drawing.Rectangle]::new(0, 0, $ocrBitmap.Width, $ocrBitmap.Height))
+        $darkPixels = 0
+        for ($x = 0; $x -lt [Math]::Min($ocrBitmap.Width, 260); $x += 4) {
+            for ($y = 0; $y -lt [Math]::Min($ocrBitmap.Height, 120); $y += 4) {
+                $pixel = $ocrBitmap.GetPixel($x, $y)
+                if ($pixel.R -lt 80 -and $pixel.G -lt 80 -and $pixel.B -lt 80) {
+                    $darkPixels++
+                }
+            }
+        }
+        if ($darkPixels -lt 8) {
+            throw "Inline OCR text box did not render visible dark text or border. DarkPixels=$darkPixels"
+        }
+    }
+    finally {
+        $ocrBitmap.Dispose()
+    }
+
     $ocrBeforeMove = [System.Drawing.Rectangle]$selectedField.GetValue($form)
     $ocrWindowBeforeMove = [System.Drawing.Rectangle]$form.Bounds
     $ocrMoveX = [Math]::Max(20, [int]($ocrBeforeMove.Width / 2))

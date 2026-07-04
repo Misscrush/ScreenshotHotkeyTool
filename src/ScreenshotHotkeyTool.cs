@@ -2627,33 +2627,21 @@ namespace ScreenshotHotkeyTool
         }
     }
 
-    internal sealed class InlineOcrTextControl : Panel
+    internal sealed class InlineOcrTextControl : Control
     {
         private const int TextPadding = 14;
-        private readonly Label textLabel;
         private bool wordWrap = true;
 
         public InlineOcrTextControl()
         {
-            AutoScroll = true;
-            BorderStyle = BorderStyle.FixedSingle;
+            DoubleBuffered = true;
             BackColor = Color.White;
             ForeColor = Color.Black;
-
-            textLabel = new Label
-            {
-                AutoSize = true,
-                BackColor = Color.White,
-                ForeColor = Color.Black,
-                Location = new Point(TextPadding, TextPadding),
-                TextAlign = ContentAlignment.TopLeft,
-                UseMnemonic = false
-            };
-            textLabel.MouseDown += RelayLabelMouseDown;
-            textLabel.MouseMove += RelayLabelMouseMove;
-            textLabel.MouseUp += RelayLabelMouseUp;
-            Controls.Add(textLabel);
+            Cursor = Cursors.SizeAll;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         }
+
+        public BorderStyle BorderStyle { get; set; }
 
         public bool WordWrap
         {
@@ -2661,7 +2649,6 @@ namespace ScreenshotHotkeyTool
             set
             {
                 wordWrap = value;
-                UpdateLabelLayout();
                 Invalidate();
             }
         }
@@ -2669,58 +2656,48 @@ namespace ScreenshotHotkeyTool
         protected override void OnTextChanged(EventArgs e)
         {
             base.OnTextChanged(e);
-            AutoScrollPosition = Point.Empty;
-            UpdateLabelLayout();
+            Invalidate();
         }
 
         protected override void OnFontChanged(EventArgs e)
         {
             base.OnFontChanged(e);
-            if (textLabel != null)
-                textLabel.Font = Font;
-            UpdateLabelLayout();
+            Invalidate();
         }
 
-        protected override void OnSizeChanged(EventArgs e)
+        protected override void OnForeColorChanged(EventArgs e)
         {
-            base.OnSizeChanged(e);
-            UpdateLabelLayout();
+            base.OnForeColorChanged(e);
+            Invalidate();
         }
 
-        private void UpdateLabelLayout()
+        protected override void OnBackColorChanged(EventArgs e)
         {
-            if (textLabel == null || ClientSize.Width <= 0)
-                return;
-
-            var displayText = string.IsNullOrEmpty(Text) ? "未识别到文字" : Text;
-            textLabel.Text = displayText;
-            textLabel.Font = Font;
-            textLabel.ForeColor = ForeColor;
-            textLabel.BackColor = BackColor;
-            textLabel.Location = new Point(TextPadding, TextPadding);
-            textLabel.MaximumSize = wordWrap
-                ? new Size(Math.Max(20, ClientSize.Width - TextPadding * 2 - SystemInformation.VerticalScrollBarWidth), 0)
-                : Size.Empty;
+            base.OnBackColorChanged(e);
+            Invalidate();
         }
 
-        private void RelayLabelMouseDown(object sender, MouseEventArgs e)
+        protected override void OnPaint(PaintEventArgs e)
         {
-            OnMouseDown(OffsetMouseEvent(e));
-        }
+            base.OnPaint(e);
+            e.Graphics.Clear(BackColor);
 
-        private void RelayLabelMouseMove(object sender, MouseEventArgs e)
-        {
-            OnMouseMove(OffsetMouseEvent(e));
-        }
+            var textBounds = new Rectangle(
+                TextPadding,
+                TextPadding,
+                Math.Max(1, ClientSize.Width - TextPadding * 2),
+                Math.Max(1, ClientSize.Height - TextPadding * 2));
+            var flags = TextFormatFlags.TextBoxControl | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping;
+            if (wordWrap)
+                flags |= TextFormatFlags.WordBreak;
 
-        private void RelayLabelMouseUp(object sender, MouseEventArgs e)
-        {
-            OnMouseUp(OffsetMouseEvent(e));
-        }
+            var displayText = string.IsNullOrWhiteSpace(Text) ? "??????" : Text;
+            TextRenderer.DrawText(e.Graphics, displayText, Font, textBounds, ForeColor, BackColor, flags);
 
-        private MouseEventArgs OffsetMouseEvent(MouseEventArgs e)
-        {
-            return new MouseEventArgs(e.Button, e.Clicks, e.X + textLabel.Left, e.Y + textLabel.Top, e.Delta);
+            using (var borderPen = new Pen(Color.Black, 2))
+            {
+                e.Graphics.DrawRectangle(borderPen, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
+            }
         }
     }
 
