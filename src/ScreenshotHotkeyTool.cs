@@ -330,7 +330,7 @@ namespace ScreenshotHotkeyTool
         private readonly bool recognizeImmediately;
         private ImageCanvasControl editorCanvas;
         private Bitmap selectedOriginalImage;
-        private TextBox inlineOcrBox;
+        private InlineOcrTextControl inlineOcrBox;
         private Panel ocrResizeGrip;
         private FlowLayoutPanel editorToolbar;
         private FlowLayoutPanel ocrToolbar;
@@ -711,6 +711,7 @@ namespace ScreenshotHotkeyTool
         private FlowLayoutPanel CreateOcrToolbar()
         {
             var toolbar = CreateFloatingToolbar(48);
+            var translateToGermanButton = CreateToolButton("转德文", "转德文");
             var translateToChineseButton = CreateToolButton("转中文", "转中文");
             var translateToEnglishButton = CreateToolButton("转英文", "转英文");
             var formatButton = CreateToolButton("去格式", "去格式");
@@ -718,8 +719,13 @@ namespace ScreenshotHotkeyTool
             var saveTextButton = CreateToolButton("保存", "保存文字");
             var closeButton = CreateToolButton("关闭", "关闭");
 
+            translateToChineseButton.AccessibleName = "zh-CN";
+            translateToEnglishButton.AccessibleName = "en";
+            translateToGermanButton.AccessibleName = "de";
+
             toolbar.Controls.Add(translateToChineseButton);
             toolbar.Controls.Add(translateToEnglishButton);
+            toolbar.Controls.Add(translateToGermanButton);
             toolbar.Controls.Add(formatButton);
             toolbar.Controls.Add(copyButton);
             toolbar.Controls.Add(saveTextButton);
@@ -727,6 +733,7 @@ namespace ScreenshotHotkeyTool
 
             translateToChineseButton.Click += delegate { TranslateInlineOcrText("zh-CN", translateToChineseButton, translateToEnglishButton); };
             translateToEnglishButton.Click += delegate { TranslateInlineOcrText("en", translateToEnglishButton, translateToChineseButton); };
+            translateToGermanButton.Click += delegate { TranslateInlineOcrText("de", translateToGermanButton, translateToChineseButton, translateToEnglishButton); };
             formatButton.Click += delegate
             {
                 if (inlineOcrBox == null)
@@ -746,7 +753,7 @@ namespace ScreenshotHotkeyTool
                     formatButton.Text = "复原格式";
                     toolTip.SetToolTip(formatButton, "复原格式");
                 }
-                ClearInlineTranslationState(translateToChineseButton, translateToEnglishButton);
+                ClearInlineTranslationState(translateToChineseButton, translateToEnglishButton, translateToGermanButton);
             };
             copyButton.Click += delegate
             {
@@ -1130,18 +1137,16 @@ namespace ScreenshotHotkeyTool
             if (styleToolbar != null)
                 styleToolbar.Visible = false;
 
-            inlineOcrBox = new TextBox
+            inlineOcrBox = new InlineOcrTextControl
             {
                 Bounds = selectedBounds,
-                Multiline = true,
-                ScrollBars = ScrollBars.Vertical,
                 WordWrap = true,
                 Font = new Font("Microsoft YaHei UI", 14, FontStyle.Regular),
                 BorderStyle = BorderStyle.FixedSingle,
                 Text = string.IsNullOrWhiteSpace(inlineOcrFormattedText) ? "未识别到文字" : inlineOcrFormattedText,
                 BackColor = Color.White,
                 ForeColor = Color.Black,
-                ReadOnly = false
+                Cursor = Cursors.SizeAll
             };
             inlineOcrBox.MouseDown += BeginResizeInlineOcrBox;
             inlineOcrBox.MouseMove += ResizeInlineOcrBox;
@@ -1191,7 +1196,7 @@ namespace ScreenshotHotkeyTool
             selectedBounds = new Rectangle(0, 0, targetWidth, targetHeight);
         }
 
-        private void TranslateInlineOcrText(string targetLanguage, Button primaryButton, Button secondaryButton)
+        private void TranslateInlineOcrText(string targetLanguage, Button primaryButton, params Button[] secondaryButtons)
         {
             if (inlineOcrBox == null)
                 return;
@@ -1201,8 +1206,7 @@ namespace ScreenshotHotkeyTool
                 SetInlineOcrText(inlineOcrTextBeforeTranslation ?? inlineOcrFormattedText);
                 inlineOcrShowingTranslation = false;
                 inlineOcrTextBeforeTranslation = null;
-                primaryButton.Text = targetLanguage == "en" ? "转英文" : "转中文";
-                toolTip.SetToolTip(primaryButton, primaryButton.Text);
+                SetTranslationButtonText(primaryButton, targetLanguage);
                 return;
             }
 
@@ -1211,8 +1215,7 @@ namespace ScreenshotHotkeyTool
                 return;
 
             inlineOcrTextBeforeTranslation = sourceText;
-            primaryButton.Enabled = false;
-            secondaryButton.Enabled = false;
+            SetTranslationButtonsEnabled(false, primaryButton, secondaryButtons);
             ThreadPool.QueueUserWorkItem(delegate
             {
                 string translatedText = null;
@@ -1228,37 +1231,76 @@ namespace ScreenshotHotkeyTool
 
                 BeginInvoke((MethodInvoker)delegate
                 {
-                    primaryButton.Enabled = true;
-                    secondaryButton.Enabled = true;
+                    SetTranslationButtonsEnabled(true, primaryButton, secondaryButtons);
                     if (error != null)
                     {
-                        SetInlineOcrText("翻译失败：" + Environment.NewLine + error.Message + Environment.NewLine + Environment.NewLine + sourceText);
-                        ClearInlineTranslationState(primaryButton, secondaryButton);
+                        SetInlineOcrText("?????" + Environment.NewLine + error.Message + Environment.NewLine + Environment.NewLine + sourceText);
+                        ClearInlineTranslationState(CombineButtons(primaryButton, secondaryButtons));
                         return;
                     }
 
                     SetInlineOcrText(translatedText);
                     inlineOcrShowingTranslation = true;
-                    primaryButton.Text = "复原原文";
-                    toolTip.SetToolTip(primaryButton, "复原原文");
+                    primaryButton.Text = "????";
+                    toolTip.SetToolTip(primaryButton, "????");
                 });
             });
         }
 
-        private void ClearInlineTranslationState(Button translateToChineseButton, Button translateToEnglishButton)
+        private void SetTranslationButtonsEnabled(bool enabled, Button primaryButton, Button[] secondaryButtons)
+        {
+            if (primaryButton != null)
+                primaryButton.Enabled = enabled;
+            if (secondaryButtons == null)
+                return;
+
+            foreach (var button in secondaryButtons)
+            {
+                if (button != null)
+                    button.Enabled = enabled;
+            }
+        }
+
+        private Button[] CombineButtons(Button primaryButton, Button[] secondaryButtons)
+        {
+            var buttons = new List<Button>();
+            if (primaryButton != null)
+                buttons.Add(primaryButton);
+            if (secondaryButtons != null)
+                buttons.AddRange(secondaryButtons);
+            return buttons.ToArray();
+        }
+
+        private void ClearInlineTranslationState(params Button[] buttons)
         {
             inlineOcrShowingTranslation = false;
             inlineOcrTextBeforeTranslation = null;
-            if (translateToChineseButton != null)
+            if (buttons == null)
+                return;
+
+            foreach (var button in buttons)
             {
-                translateToChineseButton.Text = "转中文";
-                toolTip.SetToolTip(translateToChineseButton, "转中文");
+                if (button != null)
+                    SetTranslationButtonText(button, button.AccessibleName);
             }
-            if (translateToEnglishButton != null)
-            {
-                translateToEnglishButton.Text = "转英文";
-                toolTip.SetToolTip(translateToEnglishButton, "转英文");
-            }
+        }
+
+        private void SetTranslationButtonText(Button button, string targetLanguage)
+        {
+            if (button == null)
+                return;
+
+            button.Text = TranslationButtonText(targetLanguage);
+            toolTip.SetToolTip(button, button.Text);
+        }
+
+        private static string TranslationButtonText(string targetLanguage)
+        {
+            if (targetLanguage == "en")
+                return "???";
+            if (targetLanguage == "de")
+                return "???";
+            return "???";
         }
 
         private void SaveInlineOcrText()
@@ -1374,8 +1416,8 @@ namespace ScreenshotHotkeyTool
                 return;
 
             movingInlineOcrBox = true;
-            moveStartPoint = PointToClient(sourceControl.PointToScreen(e.Location));
-            moveStartBounds = selectedBounds;
+            moveStartPoint = sourceControl.PointToScreen(e.Location);
+            moveStartBounds = Bounds;
             Cursor = Cursors.SizeAll;
             inlineOcrBox.Cursor = Cursors.SizeAll;
         }
@@ -1386,18 +1428,12 @@ namespace ScreenshotHotkeyTool
                 return;
 
             var sourceControl = sender as Control;
-            var currentPoint = PointToClient(sourceControl.PointToScreen(e.Location));
+            var currentPoint = sourceControl.PointToScreen(e.Location);
             var dx = currentPoint.X - moveStartPoint.X;
             var dy = currentPoint.Y - moveStartPoint.Y;
-            var left = Clamp(moveStartBounds.Left + dx, 0, Math.Max(0, ClientSize.Width - moveStartBounds.Width));
-            var top = Clamp(moveStartBounds.Top + dy, 0, Math.Max(0, ClientSize.Height - moveStartBounds.Height));
-
-            selectedBounds = new Rectangle(left, top, moveStartBounds.Width, moveStartBounds.Height);
-            inlineOcrBox.Bounds = selectedBounds;
-            ocrResizeGrip.Bounds = ResizeGripBounds();
-            PositionFloatingToolbars();
-            UpdateOverlayRegion();
-            Invalidate();
+            var left = Clamp(moveStartBounds.Left + dx, virtualBounds.Left, Math.Max(virtualBounds.Left, virtualBounds.Right - moveStartBounds.Width));
+            var top = Clamp(moveStartBounds.Top + dy, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - moveStartBounds.Height));
+            Bounds = new Rectangle(left, top, moveStartBounds.Width, moveStartBounds.Height);
         }
 
         private void EndMoveInlineOcrBox(object sender, MouseEventArgs e)
@@ -1796,9 +1832,11 @@ namespace ScreenshotHotkeyTool
         private readonly ComboBox translationProviderBox;
         private readonly Button translateToEnglishButton;
         private readonly Button translateToChineseButton;
+        private readonly Button translateToGermanButton;
         private const string TranslateToEnglishText = "转英文";
         private const string TranslateToChineseText = "转中文";
         private const string RestoreOriginalTextLabel = "复原原文";
+        private const string TranslateToGermanText = "转德文";
         private string textBeforeTranslation;
         private bool formatRemoved;
         private bool formatRemovedBeforeTranslation;
@@ -1845,6 +1883,7 @@ namespace ScreenshotHotkeyTool
             var formatButton = new Button { Text = "去格式", Width = 86, Height = 30 };
             translateToEnglishButton = new Button { Text = TranslateToEnglishText, Width = 78, Height = 30 };
             translateToChineseButton = new Button { Text = TranslateToChineseText, Width = 78, Height = 30 };
+            translateToGermanButton = new Button { Text = TranslateToGermanText, Width = 78, Height = 30 };
             translationProviderBox = new ComboBox { Width = 90, Height = 30, DropDownStyle = ComboBoxStyle.DropDownList };
             translationProviderBox.Items.Add("Google");
             translationProviderBox.Items.Add("Baidu");
@@ -1879,6 +1918,7 @@ namespace ScreenshotHotkeyTool
             toolbar.Controls.Add(formatButton);
             toolbar.Controls.Add(translateToEnglishButton);
             toolbar.Controls.Add(translateToChineseButton);
+            toolbar.Controls.Add(translateToGermanButton);
             toolbar.Controls.Add(translationProviderBox);
             toolbar.Controls.Add(translationProviderLabel);
             Controls.Add(resultBox);
@@ -1914,6 +1954,7 @@ namespace ScreenshotHotkeyTool
 
             translateToEnglishButton.Click += delegate { TranslateCurrentText("en", translateToEnglishButton, translateToChineseButton); };
             translateToChineseButton.Click += delegate { TranslateCurrentText("zh-CN", translateToChineseButton, translateToEnglishButton); };
+            translateToGermanButton.Click += delegate { TranslateCurrentText("de", translateToGermanButton, translateToChineseButton, translateToEnglishButton); };
             translationProviderBox.SelectedIndexChanged += delegate
             {
                 if (translationProviderBox.SelectedItem == null)
@@ -1944,7 +1985,7 @@ namespace ScreenshotHotkeyTool
             closeButton.Click += delegate { Close(); };
         }
 
-        private void TranslateCurrentText(string targetLanguage, Button primaryButton, Button secondaryButton)
+        private void TranslateCurrentText(string targetLanguage, Button primaryButton, params Button[] secondaryButtons)
         {
             if (showingTranslation)
             {
@@ -1961,9 +2002,8 @@ namespace ScreenshotHotkeyTool
 
             textBeforeTranslation = sourceText;
             formatRemovedBeforeTranslation = formatRemoved;
-            primaryButton.Enabled = false;
-            secondaryButton.Enabled = false;
-            statusLabel.Text = targetLanguage == "en" ? "正在翻译为英文..." : "正在翻译为中文...";
+            SetResultTranslationButtonsEnabled(false, primaryButton, secondaryButtons);
+            statusLabel.Text = "正在翻译为" + TranslationLanguageName(targetLanguage) + "...";
 
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -1980,8 +2020,7 @@ namespace ScreenshotHotkeyTool
 
                 BeginInvoke((MethodInvoker)delegate
                 {
-                    primaryButton.Enabled = true;
-                    secondaryButton.Enabled = true;
+                    SetResultTranslationButtonsEnabled(true, primaryButton, secondaryButtons);
                     if (error != null)
                     {
                         ClearTranslationState();
@@ -1993,7 +2032,7 @@ namespace ScreenshotHotkeyTool
                     formatRemoved = false;
                     showingTranslation = true;
                     SetTranslationButtonLabels(primaryButton);
-                    statusLabel.Text = targetLanguage == "en" ? "已翻译为英文" : "已翻译为中文";
+                    statusLabel.Text = "已翻译为" + TranslationLanguageName(targetLanguage);
                 });
             });
         }
@@ -2020,8 +2059,32 @@ namespace ScreenshotHotkeyTool
         {
             translateToEnglishButton.Text = TranslateToEnglishText;
             translateToChineseButton.Text = TranslateToChineseText;
+            translateToGermanButton.Text = TranslateToGermanText;
             if (restoreButton != null)
                 restoreButton.Text = RestoreOriginalTextLabel;
+        }
+
+        private void SetResultTranslationButtonsEnabled(bool enabled, Button primaryButton, Button[] secondaryButtons)
+        {
+            if (primaryButton != null)
+                primaryButton.Enabled = enabled;
+            if (secondaryButtons == null)
+                return;
+
+            foreach (var button in secondaryButtons)
+            {
+                if (button != null)
+                    button.Enabled = enabled;
+            }
+        }
+
+        private static string TranslationLanguageName(string targetLanguage)
+        {
+            if (targetLanguage == "en")
+                return "英文";
+            if (targetLanguage == "de")
+                return "德文";
+            return "中文";
         }
 
         private static string RemoveTextFormatting(string text)
@@ -2102,7 +2165,7 @@ namespace ScreenshotHotkeyTool
             if (settings == null || string.IsNullOrWhiteSpace(settings.BaiduAppId) || string.IsNullOrWhiteSpace(settings.BaiduSecretKey))
                 throw new InvalidOperationException("请先在设置里填写百度翻译 App ID 和密钥。");
 
-            var to = targetLanguage == "en" ? "en" : "zh";
+            var to = targetLanguage == "en" ? "en" : (targetLanguage == "de" ? "de" : "zh");
             var salt = DateTime.UtcNow.Ticks.ToString();
             var sign = Md5(settings.BaiduAppId + text + salt + settings.BaiduSecretKey);
             var body = "q=" + Uri.EscapeDataString(text)
@@ -2586,6 +2649,9 @@ namespace ScreenshotHotkeyTool
                 TextAlign = ContentAlignment.TopLeft,
                 UseMnemonic = false
             };
+            textLabel.MouseDown += RelayLabelMouseDown;
+            textLabel.MouseMove += RelayLabelMouseMove;
+            textLabel.MouseUp += RelayLabelMouseUp;
             Controls.Add(textLabel);
         }
 
@@ -2635,6 +2701,26 @@ namespace ScreenshotHotkeyTool
             textLabel.MaximumSize = wordWrap
                 ? new Size(Math.Max(20, ClientSize.Width - TextPadding * 2 - SystemInformation.VerticalScrollBarWidth), 0)
                 : Size.Empty;
+        }
+
+        private void RelayLabelMouseDown(object sender, MouseEventArgs e)
+        {
+            OnMouseDown(OffsetMouseEvent(e));
+        }
+
+        private void RelayLabelMouseMove(object sender, MouseEventArgs e)
+        {
+            OnMouseMove(OffsetMouseEvent(e));
+        }
+
+        private void RelayLabelMouseUp(object sender, MouseEventArgs e)
+        {
+            OnMouseUp(OffsetMouseEvent(e));
+        }
+
+        private MouseEventArgs OffsetMouseEvent(MouseEventArgs e)
+        {
+            return new MouseEventArgs(e.Button, e.Clicks, e.X + textLabel.Left, e.Y + textLabel.Top, e.Delta);
         }
     }
 

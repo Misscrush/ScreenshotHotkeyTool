@@ -11,8 +11,13 @@ if ($source -notmatch 'translateToChineseButton') {
     throw 'OCR result window should include a translate-to-Chinese button.'
 }
 
+if ($source -notmatch 'translateToGermanButton') {
+    throw 'OCR result window should include a translate-to-German button.'
+}
+
 $toChineseLabel = ([char]0x8F6C).ToString() + ([char]0x4E2D).ToString() + ([char]0x6587).ToString()
 $toEnglishLabel = ([char]0x8F6C).ToString() + ([char]0x82F1).ToString() + ([char]0x6587).ToString()
+$toGermanLabel = ([char]0x8F6C).ToString() + ([char]0x5FB7).ToString() + ([char]0x6587).ToString()
 
 if ($source -notmatch [Regex]::Escape($toChineseLabel)) {
     throw 'English OCR text should have a clear translate-to-Chinese button label.'
@@ -20,6 +25,18 @@ if ($source -notmatch [Regex]::Escape($toChineseLabel)) {
 
 if ($source -notmatch [Regex]::Escape($toEnglishLabel)) {
     throw 'Chinese OCR text should have a clear translate-to-English button label.'
+}
+
+if ($source -notmatch [Regex]::Escape($toGermanLabel)) {
+    throw 'OCR text should have a clear translate-to-German button label.'
+}
+
+if ($source -notmatch 'TranslateCurrentText\("de"') {
+    throw 'OCR result window should translate to German.'
+}
+
+if ($source -notmatch 'TranslateInlineOcrText\("de"') {
+    throw 'Inline OCR toolbar should translate to German.'
 }
 
 if ($source -notmatch 'internal static class TranslationRunner') {

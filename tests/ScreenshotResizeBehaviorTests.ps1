@@ -139,6 +139,7 @@ try {
 
     $ocrBox = $ocrBoxField.GetValue($form)
     $ocrBeforeMove = [System.Drawing.Rectangle]$selectedField.GetValue($form)
+    $ocrWindowBeforeMove = [System.Drawing.Rectangle]$form.Bounds
     $ocrMoveX = [Math]::Max(20, [int]($ocrBeforeMove.Width / 2))
     $ocrMoveY = [Math]::Max(20, [int]($ocrBeforeMove.Height / 2))
     $ocrMoveDown = New-Object System.Windows.Forms.MouseEventArgs -ArgumentList ([System.Windows.Forms.MouseButtons]::Left), 1, $ocrMoveX, $ocrMoveY, 0
@@ -157,9 +158,9 @@ try {
     $endOcrBoxDrag.Invoke($form, $ocrDragArgs)
     [System.Windows.Forms.Application]::DoEvents()
 
-    $ocrAfterMove = [System.Drawing.Rectangle]$selectedField.GetValue($form)
-    if ($ocrAfterMove.Left -eq $ocrBeforeMove.Left -and $ocrAfterMove.Top -eq $ocrBeforeMove.Top) {
-        throw "Dragging inside the OCR text box did not move it. Before=$ocrBeforeMove After=$ocrAfterMove"
+    $ocrWindowAfterMove = [System.Drawing.Rectangle]$form.Bounds
+    if ($ocrWindowAfterMove.Left -eq $ocrWindowBeforeMove.Left -and $ocrWindowAfterMove.Top -eq $ocrWindowBeforeMove.Top) {
+        throw "Dragging inside the OCR text box did not move the floating OCR window. Before=$ocrWindowBeforeMove After=$ocrWindowAfterMove"
     }
 }
 finally {

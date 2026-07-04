@@ -144,8 +144,16 @@ if ($source -notmatch 'inlineOcrBox') {
     throw 'Inline OCR result should display recognized text in the selected region.'
 }
 
-if ($source -notmatch 'TextBox inlineOcrBox') {
-    throw 'Inline OCR result should use a standard text box in the floating editor.'
+if ($source -notmatch 'InlineOcrTextControl inlineOcrBox') {
+    throw 'Inline OCR result should use the custom visible text control in the floating editor.'
+}
+
+if ($source -notmatch 'translateToGermanButton') {
+    throw 'Inline OCR toolbar should include German translation.'
+}
+
+if ($source -notmatch 'TranslateInlineOcrText\("de"') {
+    throw 'Inline OCR toolbar should translate to German.'
 }
 
 if ($source -notmatch 'WordWrap = true') {
