@@ -411,12 +411,13 @@ namespace ScreenshotHotkeyTool
             {
                 e.Graphics.Clear(BackColor);
 
-                using (var borderPen = new Pen(Color.White, 2))
-                using (var guidePen = new Pen(Color.FromArgb(210, 24, 119, 242), 1))
+                if (inlineOcrBox != null)
                 {
-                    e.Graphics.DrawRectangle(borderPen, selectedBounds);
-                    e.Graphics.DrawRectangle(guidePen, selectedBounds.X + 2, selectedBounds.Y + 2, Math.Max(1, selectedBounds.Width - 4), Math.Max(1, selectedBounds.Height - 4));
+                    DrawInlineOcrResult(e.Graphics);
+                    return;
                 }
+
+                DrawInlineScreenshotResult(e.Graphics);
                 return;
             }
 
@@ -447,6 +448,52 @@ namespace ScreenshotHotkeyTool
 
             if (!editing)
                 DrawHint(e.Graphics);
+        }
+
+        private void DrawInlineScreenshotResult(Graphics graphics)
+        {
+            Image image = editorCanvas != null ? editorCanvas.Image : selectedOriginalImage;
+            if (image != null)
+            {
+                graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                graphics.DrawImage(image, selectedBounds);
+            }
+
+            using (var borderPen = new Pen(Color.Black, 2))
+            using (var innerPen = new Pen(Color.White, 1))
+            using (var guidePen = new Pen(Color.FromArgb(210, 24, 119, 242), 1))
+            {
+                graphics.DrawRectangle(borderPen, selectedBounds);
+                graphics.DrawRectangle(innerPen, selectedBounds.X + 2, selectedBounds.Y + 2, Math.Max(1, selectedBounds.Width - 4), Math.Max(1, selectedBounds.Height - 4));
+                graphics.DrawRectangle(guidePen, selectedBounds.X + 4, selectedBounds.Y + 4, Math.Max(1, selectedBounds.Width - 8), Math.Max(1, selectedBounds.Height - 8));
+            }
+        }
+
+        private void DrawInlineOcrResult(Graphics graphics)
+        {
+            using (var background = new SolidBrush(Color.White))
+            using (var textBrush = new SolidBrush(Color.Black))
+            using (var borderPen = new Pen(Color.Black, 2))
+            {
+                graphics.FillRectangle(background, selectedBounds);
+                graphics.DrawRectangle(borderPen, selectedBounds);
+
+                var textBounds = new Rectangle(
+                    selectedBounds.Left + 14,
+                    selectedBounds.Top + 14,
+                    Math.Max(1, selectedBounds.Width - 28),
+                    Math.Max(1, selectedBounds.Height - 28));
+                var displayText = string.IsNullOrWhiteSpace(inlineOcrBox.Text) ? "未识别到文字" : inlineOcrBox.Text;
+                TextRenderer.DrawText(
+                    graphics,
+                    displayText,
+                    inlineOcrBox.Font,
+                    textBounds,
+                    Color.Black,
+                    Color.White,
+                    TextFormatFlags.TextBoxControl | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+            }
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -550,8 +597,9 @@ namespace ScreenshotHotkeyTool
             editorCanvas = new ImageCanvasControl((Bitmap)selectedOriginalImage.Clone())
             {
                 Bounds = selectedBounds,
-                BackColor = Color.White,
-                Cursor = Cursors.SizeAll
+                BackColor = TransparentEditorColor,
+                Cursor = Cursors.SizeAll,
+                Visible = false
             };
             editorCanvas.MouseDown += BeginResizeSelectedImage;
             editorCanvas.MouseMove += ResizeSelectedImage;
@@ -565,7 +613,7 @@ namespace ScreenshotHotkeyTool
             Controls.Add(editorCanvas);
             Controls.Add(editorToolbar);
             Controls.Add(styleToolbar);
-            editorCanvas.BringToFront();
+            editorCanvas.SendToBack();
             editorToolbar.BringToFront();
             styleToolbar.BringToFront();
             UpdateOverlayRegion();
@@ -907,8 +955,17 @@ namespace ScreenshotHotkeyTool
         private void ToggleEditorMode(AnnotationMode mode)
         {
             editorCanvas.Mode = editorCanvas.Mode == mode ? AnnotationMode.None : mode;
+            editorCanvas.Visible = editorCanvas.Mode != AnnotationMode.None;
+            if (editorCanvas.Visible)
+                editorCanvas.BringToFront();
+            if (editorToolbar != null)
+                editorToolbar.BringToFront();
+            if (styleToolbar != null)
+                styleToolbar.BringToFront();
             styleToolbar.Visible = editorCanvas.Mode != AnnotationMode.None;
             UpdateEditorButtons();
+            UpdateOverlayRegion();
+            Invalidate();
         }
 
         private void UpdateEditorButtons()
@@ -1144,9 +1201,10 @@ namespace ScreenshotHotkeyTool
                 Font = new Font("Microsoft YaHei UI", 14, FontStyle.Regular),
                 BorderStyle = BorderStyle.FixedSingle,
                 Text = string.IsNullOrWhiteSpace(inlineOcrFormattedText) ? "未识别到文字" : inlineOcrFormattedText,
-                BackColor = Color.White,
+                BackColor = TransparentEditorColor,
                 ForeColor = Color.Black,
-                Cursor = Cursors.SizeAll
+                Cursor = Cursors.SizeAll,
+                Visible = false
             };
             inlineOcrBox.MouseDown += BeginResizeInlineOcrBox;
             inlineOcrBox.MouseMove += ResizeInlineOcrBox;
@@ -1166,10 +1224,11 @@ namespace ScreenshotHotkeyTool
             Controls.Add(ocrResizeGrip);
             Controls.Add(ocrToolbar);
             Controls.Add(inlineOcrBox);
-            inlineOcrBox.BringToFront();
+            inlineOcrBox.SendToBack();
             ocrResizeGrip.BringToFront();
             ocrToolbar.BringToFront();
             UpdateOverlayRegion();
+            Invalidate();
         }
 
         private void SetInlineOcrText(string text)
@@ -1177,7 +1236,8 @@ namespace ScreenshotHotkeyTool
             if (inlineOcrBox == null)
                 return;
 
-            inlineOcrBox.Text = string.IsNullOrWhiteSpace(text) ? "未识别到文字" : text;
+            inlineOcrBox.Text = string.IsNullOrWhiteSpace(text) ? "??????" : text;
+            Invalidate();
         }
 
         private void EnsureFloatingWindowHasOcrWorkspace()
