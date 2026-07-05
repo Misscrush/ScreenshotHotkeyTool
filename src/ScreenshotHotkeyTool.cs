@@ -599,7 +599,7 @@ namespace ScreenshotHotkeyTool
                 Bounds = selectedBounds,
                 BackColor = TransparentEditorColor,
                 Cursor = Cursors.SizeAll,
-                Visible = false
+                Visible = true
             };
             editorCanvas.MouseDown += BeginResizeSelectedImage;
             editorCanvas.MouseMove += ResizeSelectedImage;
@@ -613,7 +613,7 @@ namespace ScreenshotHotkeyTool
             Controls.Add(editorCanvas);
             Controls.Add(editorToolbar);
             Controls.Add(styleToolbar);
-            editorCanvas.SendToBack();
+            editorCanvas.BringToFront();
             editorToolbar.BringToFront();
             styleToolbar.BringToFront();
             UpdateOverlayRegion();
@@ -845,7 +845,7 @@ namespace ScreenshotHotkeyTool
             var button = new Button
             {
                 Text = text,
-                Width = text.Length > 1 ? 48 : 38,
+                Width = text.Length >= 3 ? 58 : (text.Length > 1 ? 48 : 38),
                 Height = 30,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(42, 42, 42),
@@ -955,9 +955,8 @@ namespace ScreenshotHotkeyTool
         private void ToggleEditorMode(AnnotationMode mode)
         {
             editorCanvas.Mode = editorCanvas.Mode == mode ? AnnotationMode.None : mode;
-            editorCanvas.Visible = editorCanvas.Mode != AnnotationMode.None;
-            if (editorCanvas.Visible)
-                editorCanvas.BringToFront();
+            editorCanvas.Visible = true;
+            editorCanvas.BringToFront();
             if (editorToolbar != null)
                 editorToolbar.BringToFront();
             if (styleToolbar != null)
@@ -1357,10 +1356,10 @@ namespace ScreenshotHotkeyTool
         private static string TranslationButtonText(string targetLanguage)
         {
             if (targetLanguage == "en")
-                return "???";
+                return "\u8f6c\u82f1";
             if (targetLanguage == "de")
-                return "???";
-            return "???";
+                return "\u8f6c\u5fb7";
+            return "\u8f6c\u4e2d";
         }
 
         private void SaveInlineOcrText()

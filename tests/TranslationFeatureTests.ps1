@@ -39,6 +39,14 @@ if ($source -notmatch 'TranslateInlineOcrText\("de"') {
     throw 'Inline OCR toolbar should translate to German.'
 }
 
+if ($source -match 'return "\?\?\?"') {
+    throw 'Translation button labels should not fall back to question marks.'
+}
+
+if ($source -notmatch '\\u8f6c\\u5fb7') {
+    throw 'German translation restore label should return to a readable Chinese button label.'
+}
+
 if ($source -notmatch 'internal static class TranslationRunner') {
     throw 'Translation logic should be isolated in TranslationRunner.'
 }
