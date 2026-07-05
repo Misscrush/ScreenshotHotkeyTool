@@ -43,6 +43,18 @@ if ($source -match 'return "\?\?\?"') {
     throw 'Translation button labels should not fall back to question marks.'
 }
 
+if ($source -match 'primaryButton\.Text = "\?\?\?\?"') {
+    throw 'Inline translation restore button should not become question marks.'
+}
+
+if ($source -match 'SetInlineOcrText\("\?\?\?\?\?"') {
+    throw 'Inline translation failure message should not become question marks.'
+}
+
+if ($source -notmatch '\\u590d\\u539f') {
+    throw 'Inline translation restore button should use a readable Chinese label.'
+}
+
 if ($source -notmatch '\\u8f6c\\u5fb7') {
     throw 'German translation restore label should return to a readable Chinese button label.'
 }

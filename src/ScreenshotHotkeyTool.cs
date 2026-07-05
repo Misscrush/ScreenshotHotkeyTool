@@ -597,7 +597,7 @@ namespace ScreenshotHotkeyTool
             editorCanvas = new ImageCanvasControl((Bitmap)selectedOriginalImage.Clone())
             {
                 Bounds = selectedBounds,
-                BackColor = TransparentEditorColor,
+                BackColor = Color.White,
                 Cursor = Cursors.SizeAll,
                 Visible = true
             };
@@ -627,7 +627,7 @@ namespace ScreenshotHotkeyTool
 
         private void SwitchToFloatingEditorWindow(Rectangle selection)
         {
-            var toolbarReserve = 130;
+            var toolbarReserve = 190;
             var windowWidth = Math.Min(virtualBounds.Width, Math.Max(selection.Width, 360));
             var windowHeight = Math.Min(virtualBounds.Height, selection.Height + toolbarReserve);
             var screenLeft = virtualBounds.Left + selection.Left;
@@ -636,8 +636,8 @@ namespace ScreenshotHotkeyTool
             var top = Clamp(screenTop, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - windowHeight));
 
             Bounds = new Rectangle(left, top, windowWidth, windowHeight);
-            BackColor = TransparentEditorColor;
-            TransparencyKey = TransparentEditorColor;
+            BackColor = Color.FromArgb(245, 247, 250);
+            TransparencyKey = Color.Empty;
             TopMost = true;
             ShowInTaskbar = false;
             selectedBounds = new Rectangle(
@@ -759,13 +759,13 @@ namespace ScreenshotHotkeyTool
         private FlowLayoutPanel CreateOcrToolbar()
         {
             var toolbar = CreateFloatingToolbar(48);
-            var translateToGermanButton = CreateToolButton("转德文", "转德文");
-            var translateToChineseButton = CreateToolButton("转中文", "转中文");
-            var translateToEnglishButton = CreateToolButton("转英文", "转英文");
-            var formatButton = CreateToolButton("去格式", "去格式");
-            var copyButton = CreateToolButton("复制", "复制");
-            var saveTextButton = CreateToolButton("保存", "保存文字");
-            var closeButton = CreateToolButton("关闭", "关闭");
+            var translateToGermanButton = CreateToolButton("\u8f6c\u5fb7\u6587", "\u8f6c\u5fb7\u6587");
+            var translateToChineseButton = CreateToolButton("\u8f6c\u4e2d\u6587", "\u8f6c\u4e2d\u6587");
+            var translateToEnglishButton = CreateToolButton("\u8f6c\u82f1\u6587", "\u8f6c\u82f1\u6587");
+            var formatButton = CreateToolButton("\u53bb\u683c\u5f0f", "\u53bb\u683c\u5f0f");
+            var copyButton = CreateToolButton("\u590d\u5236", "\u590d\u5236\u6587\u5b57");
+            var saveTextButton = CreateToolButton("\u4fdd\u5b58", "\u4fdd\u5b58\u6587\u5b57");
+            var closeButton = CreateToolButton("\u5173\u95ed", "\u5173\u95ed");
 
             translateToChineseButton.AccessibleName = "zh-CN";
             translateToEnglishButton.AccessibleName = "en";
@@ -779,8 +779,8 @@ namespace ScreenshotHotkeyTool
             toolbar.Controls.Add(saveTextButton);
             toolbar.Controls.Add(closeButton);
 
-            translateToChineseButton.Click += delegate { TranslateInlineOcrText("zh-CN", translateToChineseButton, translateToEnglishButton); };
-            translateToEnglishButton.Click += delegate { TranslateInlineOcrText("en", translateToEnglishButton, translateToChineseButton); };
+            translateToChineseButton.Click += delegate { TranslateInlineOcrText("zh-CN", translateToChineseButton, translateToEnglishButton, translateToGermanButton); };
+            translateToEnglishButton.Click += delegate { TranslateInlineOcrText("en", translateToEnglishButton, translateToChineseButton, translateToGermanButton); };
             translateToGermanButton.Click += delegate { TranslateInlineOcrText("de", translateToGermanButton, translateToChineseButton, translateToEnglishButton); };
             formatButton.Click += delegate
             {
@@ -791,15 +791,15 @@ namespace ScreenshotHotkeyTool
                 {
                     SetInlineOcrText(inlineOcrFormattedText);
                     inlineOcrFormatRemoved = false;
-                    formatButton.Text = "去格式";
-                    toolTip.SetToolTip(formatButton, "去格式");
+                    formatButton.Text = "\u53bb\u683c\u5f0f";
+                    toolTip.SetToolTip(formatButton, "\u53bb\u683c\u5f0f");
                 }
                 else
                 {
                     SetInlineOcrText(RemoveTextFormatting(inlineOcrFormattedText));
                     inlineOcrFormatRemoved = true;
-                    formatButton.Text = "复原格式";
-                    toolTip.SetToolTip(formatButton, "复原格式");
+                    formatButton.Text = "\u590d\u539f\u683c\u5f0f";
+                    toolTip.SetToolTip(formatButton, "\u590d\u539f\u683c\u5f0f");
                 }
                 ClearInlineTranslationState(translateToChineseButton, translateToEnglishButton, translateToGermanButton);
             };
@@ -813,7 +813,6 @@ namespace ScreenshotHotkeyTool
 
             return toolbar;
         }
-
         private static FlowLayoutPanel CreateFloatingToolbar(int height)
         {
             return new FlowLayoutPanel
@@ -870,15 +869,20 @@ namespace ScreenshotHotkeyTool
         {
             var mainToolbar = ocrToolbar ?? editorToolbar;
             var toolbarSize = mainToolbar.GetPreferredSize(Size.Empty);
-            var styleSize = styleToolbar.GetPreferredSize(Size.Empty);
+            var showStyleToolbar = styleToolbar != null && styleToolbar.Visible && editorCanvas != null && editorCanvas.Mode != AnnotationMode.None;
+            var styleSize = showStyleToolbar ? styleToolbar.GetPreferredSize(Size.Empty) : Size.Empty;
             EnsureFloatingWindowCanFitToolbars(toolbarSize, styleSize);
 
             toolbarSize = mainToolbar.GetPreferredSize(Size.Empty);
-            styleSize = styleToolbar.GetPreferredSize(Size.Empty);
+            showStyleToolbar = styleToolbar != null && styleToolbar.Visible && editorCanvas != null && editorCanvas.Mode != AnnotationMode.None;
+            styleSize = showStyleToolbar ? styleToolbar.GetPreferredSize(Size.Empty) : Size.Empty;
             var toolbarX = Clamp(selectedBounds.Left + (selectedBounds.Width - toolbarSize.Width) / 2, 8, Math.Max(8, ClientSize.Width - toolbarSize.Width - 8));
             var toolbarY = selectedBounds.Bottom + 10;
             if (toolbarY + toolbarSize.Height + styleSize.Height + 18 > ClientSize.Height)
                 toolbarY = Math.Max(8, selectedBounds.Top - toolbarSize.Height - styleSize.Height - 18);
+            if (selectedBounds.Bottom + 10 + toolbarSize.Height + styleSize.Height + 8 <= ClientSize.Height)
+                toolbarY = selectedBounds.Bottom + 10;
+            toolbarY = Clamp(toolbarY, 8, Math.Max(8, ClientSize.Height - toolbarSize.Height - 8));
 
             mainToolbar.Location = new Point(toolbarX, toolbarY);
             if (styleToolbar != null)
@@ -890,24 +894,47 @@ namespace ScreenshotHotkeyTool
             UpdateOverlayRegion();
         }
 
+        private void FitFloatingWindowBottom(int toolbarY, Size toolbarSize, Size styleSize)
+        {
+            var toolbarBottom = toolbarY + toolbarSize.Height;
+            if (styleSize.Height > 0)
+                toolbarBottom += styleSize.Height + 8;
+
+            var requiredHeight = Math.Max(selectedBounds.Bottom, toolbarBottom) + 8;
+            requiredHeight = Math.Min(virtualBounds.Height, Math.Max(requiredHeight, selectedBounds.Bottom + 8));
+            if (Math.Abs(ClientSize.Height - requiredHeight) <= 3)
+                return;
+
+            Bounds = new Rectangle(Left, Top, Width, requiredHeight);
+        }
+
         private void EnsureFloatingWindowCanFitToolbars(Size toolbarSize, Size styleSize)
         {
             var requiredWidth = Math.Max(selectedBounds.Width, Math.Max(toolbarSize.Width, styleSize.Width) + 16);
-            if (ClientSize.Width >= requiredWidth || Width >= virtualBounds.Width)
+            var toolbarStackHeight = toolbarSize.Height + (styleSize.Height > 0 ? styleSize.Height + 8 : 0);
+            var requiredHeight = selectedBounds.Bottom + 10 + toolbarStackHeight + 8;
+            var needsWidth = ClientSize.Width < requiredWidth && Width < virtualBounds.Width;
+            var needsHeight = ClientSize.Height < requiredHeight && Height < virtualBounds.Height;
+            if (!needsWidth && !needsHeight)
                 return;
 
             var imageScreenLeft = Left + selectedBounds.Left;
             var imageScreenTop = Top + selectedBounds.Top;
-            var newWidth = Math.Min(virtualBounds.Width, requiredWidth);
+            var newWidth = needsWidth ? Math.Min(virtualBounds.Width, requiredWidth) : Width;
+            var newHeight = needsHeight ? Math.Min(virtualBounds.Height, requiredHeight) : Height;
             var newLeft = Clamp(
                 imageScreenLeft + selectedBounds.Width / 2 - newWidth / 2,
                 virtualBounds.Left,
                 Math.Max(virtualBounds.Left, virtualBounds.Right - newWidth));
+            var newTop = Clamp(
+                Top,
+                virtualBounds.Top,
+                Math.Max(virtualBounds.Top, virtualBounds.Bottom - newHeight));
 
-            Bounds = new Rectangle(newLeft, Top, newWidth, Height);
+            Bounds = new Rectangle(newLeft, newTop, newWidth, newHeight);
             selectedBounds = new Rectangle(
                 Math.Max(0, imageScreenLeft - newLeft),
-                Math.Max(0, imageScreenTop - Top),
+                Math.Max(0, imageScreenTop - newTop),
                 selectedBounds.Width,
                 selectedBounds.Height);
 
@@ -930,26 +957,26 @@ namespace ScreenshotHotkeyTool
                 Region = null;
                 oldRegion.Dispose();
             }
-
-            using (var path = new GraphicsPath())
-            {
-                var selectedRegion = selectedBounds;
-                selectedRegion.Inflate(4, 4);
-                path.AddRectangle(selectedRegion);
-                AddVisibleControlToRegion(path, editorCanvas);
-                AddVisibleControlToRegion(path, inlineOcrBox);
-                AddVisibleControlToRegion(path, ocrResizeGrip);
-                AddVisibleControlToRegion(path, editorToolbar);
-                AddVisibleControlToRegion(path, ocrToolbar);
-                AddVisibleControlToRegion(path, styleToolbar);
-                Region = new Region(path);
-            }
         }
 
         private static void AddVisibleControlToRegion(GraphicsPath path, Control control)
         {
             if (control != null && control.Visible)
-                path.AddRectangle(control.Bounds);
+                AddControlBoundsToRegion(path, control);
+        }
+
+        private static void AddControlBoundsToRegion(GraphicsPath path, Control control)
+        {
+            if (control == null)
+                return;
+
+            var bounds = control.Bounds;
+            var preferred = control.GetPreferredSize(Size.Empty);
+            if (preferred.Width > bounds.Width || preferred.Height > bounds.Height)
+                bounds = new Rectangle(control.Location, preferred);
+
+            if (bounds.Width > 0 && bounds.Height > 0)
+                path.AddRectangle(bounds);
         }
 
         private void ToggleEditorMode(AnnotationMode mode)
@@ -1200,10 +1227,10 @@ namespace ScreenshotHotkeyTool
                 Font = new Font("Microsoft YaHei UI", 14, FontStyle.Regular),
                 BorderStyle = BorderStyle.FixedSingle,
                 Text = string.IsNullOrWhiteSpace(inlineOcrFormattedText) ? "未识别到文字" : inlineOcrFormattedText,
-                BackColor = TransparentEditorColor,
+                BackColor = Color.White,
                 ForeColor = Color.Black,
                 Cursor = Cursors.SizeAll,
-                Visible = false
+                Visible = true
             };
             inlineOcrBox.MouseDown += BeginResizeInlineOcrBox;
             inlineOcrBox.MouseMove += ResizeInlineOcrBox;
@@ -1223,7 +1250,7 @@ namespace ScreenshotHotkeyTool
             Controls.Add(ocrResizeGrip);
             Controls.Add(ocrToolbar);
             Controls.Add(inlineOcrBox);
-            inlineOcrBox.SendToBack();
+            inlineOcrBox.BringToFront();
             ocrResizeGrip.BringToFront();
             ocrToolbar.BringToFront();
             UpdateOverlayRegion();
@@ -1235,7 +1262,7 @@ namespace ScreenshotHotkeyTool
             if (inlineOcrBox == null)
                 return;
 
-            inlineOcrBox.Text = string.IsNullOrWhiteSpace(text) ? "??????" : text;
+            inlineOcrBox.Text = string.IsNullOrWhiteSpace(text) ? "\u672a\u8bc6\u522b\u5230\u6587\u5b57" : text;
             Invalidate();
         }
 
@@ -1293,15 +1320,15 @@ namespace ScreenshotHotkeyTool
                     SetTranslationButtonsEnabled(true, primaryButton, secondaryButtons);
                     if (error != null)
                     {
-                        SetInlineOcrText("?????" + Environment.NewLine + error.Message + Environment.NewLine + Environment.NewLine + sourceText);
+                        SetInlineOcrText("\u7ffb\u8bd1\u5931\u8d25" + Environment.NewLine + error.Message + Environment.NewLine + Environment.NewLine + sourceText);
                         ClearInlineTranslationState(CombineButtons(primaryButton, secondaryButtons));
                         return;
                     }
 
                     SetInlineOcrText(translatedText);
                     inlineOcrShowingTranslation = true;
-                    primaryButton.Text = "????";
-                    toolTip.SetToolTip(primaryButton, "????");
+                    primaryButton.Text = "\u590d\u539f";
+                    toolTip.SetToolTip(primaryButton, "\u590d\u539f\u539f\u6587");
                 });
             });
         }
@@ -2750,7 +2777,7 @@ namespace ScreenshotHotkeyTool
             if (wordWrap)
                 flags |= TextFormatFlags.WordBreak;
 
-            var displayText = string.IsNullOrWhiteSpace(Text) ? "??????" : Text;
+            var displayText = string.IsNullOrWhiteSpace(Text) ? "\u672a\u8bc6\u522b\u5230\u6587\u5b57" : Text;
             TextRenderer.DrawText(e.Graphics, displayText, Font, textBounds, ForeColor, BackColor, flags);
 
             using (var borderPen = new Pen(Color.Black, 2))

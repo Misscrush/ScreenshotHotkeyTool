@@ -40,8 +40,8 @@ if ($source -notmatch 'SwitchToFloatingEditorWindow') {
     throw 'Selected screenshot should switch from the full-screen overlay into a floating editor window.'
 }
 
-if ($source -notmatch 'BackColor = TransparentEditorColor[\s\S]*TransparencyKey = TransparentEditorColor') {
-    throw 'Floating editor background should be transparent while controls remain visible.'
+if ($source -notmatch 'BackColor = Color\.FromArgb\(245, 247, 250\)[\s\S]*TransparencyKey = Color\.Empty') {
+    throw 'Floating editor should use an opaque background so toolbar clicks are not passed through.'
 }
 
 if ($source -notmatch 'TopMost = true') {
@@ -52,12 +52,12 @@ if ($source -notmatch 'selection\.Height \+ toolbarReserve') {
     throw 'Floating editor should resize to a small window around the captured image and toolbar.'
 }
 
-if ($source -notmatch 'Region = new Region\(path\)') {
-    throw 'Floating editor should restrict its clickable area to visible controls.'
+if ($source -notmatch 'UpdateOverlayRegion\(\)[\s\S]*Region = null') {
+    throw 'Floating editor should avoid clipping the toolbar out of the clickable window.'
 }
 
-if ($source -notmatch 'AddVisibleControlToRegion\(path, inlineOcrBox\)') {
-    throw 'Floating editor region should include the OCR text box.'
+if ($source -notmatch 'inlineOcrBox\.BringToFront\(\)') {
+    throw 'Inline OCR text box should be brought above the floating editor background.'
 }
 
 if ($source -notmatch 'DrawFloatingScreenshotBorder') {
