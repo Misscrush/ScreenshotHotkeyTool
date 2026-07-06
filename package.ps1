@@ -37,6 +37,8 @@ $installScript = @'
 @echo off
 setlocal
 set "APPDIR=%LOCALAPPDATA%\ScreenshotHotkeyTool"
+taskkill /IM ScreenshotHotkeyTool.exe /F >nul 2>nul
+timeout /t 1 /nobreak >nul
 if not exist "%APPDIR%" mkdir "%APPDIR%"
 xcopy "%~dp0*" "%APPDIR%\" /E /I /Y >nul
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop') + '\ScreenshotHotkeyTool.lnk'); $s.TargetPath=$env:LOCALAPPDATA + '\ScreenshotHotkeyTool\ScreenshotHotkeyTool.exe'; $s.WorkingDirectory=$env:LOCALAPPDATA + '\ScreenshotHotkeyTool'; $s.Save()"

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-07-06
+
+- 修复安装包覆盖旧版本失败的问题：Install.bat 会先关闭正在运行的 ScreenshotHotkeyTool，再复制新版，确保德语翻译按钮生效。
+
 ## 2026-07-05
 
 
