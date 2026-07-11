@@ -125,12 +125,17 @@ try {
         throw "Dragging inside the screenshot did not move the floating editor. Before=$windowBeforeMove After=$windowAfterMove"
     }
 
+    $selectedBeforeOcr = [System.Drawing.Rectangle]$selectedField.GetValue($form)
     $showOcrArgs = [object[]]::new(1)
     $showOcrArgs[0] = "Line one`r`nLine two"
     $showInlineOcr.Invoke($form, $showOcrArgs)
     [System.Windows.Forms.Application]::DoEvents()
 
     $ocrBox = $ocrBoxField.GetValue($form)
+    if ($ocrBox.Width -ne $selectedBeforeOcr.Width -or $ocrBox.Height -ne $selectedBeforeOcr.Height) {
+        throw "Inline OCR text box should start at the selected region size. Selected=$selectedBeforeOcr OcrBox=$($ocrBox.Bounds)"
+    }
+
     $ocrBitmap = New-Object System.Drawing.Bitmap $ocrBox.Width, $ocrBox.Height
     try {
         $ocrBox.DrawToBitmap($ocrBitmap, [System.Drawing.Rectangle]::new(0, 0, $ocrBitmap.Width, $ocrBitmap.Height))
@@ -149,6 +154,42 @@ try {
     }
     finally {
         $ocrBitmap.Dispose()
+    }
+
+    $ocrBeforeRightResize = [System.Drawing.Rectangle]$selectedField.GetValue($form)
+    $rightResizeDown = New-Object System.Windows.Forms.MouseEventArgs -ArgumentList ([System.Windows.Forms.MouseButtons]::Left), 1, ($ocrBox.Width - 1), ([Math]::Max(10, [int]($ocrBox.Height / 2))), 0
+    $rightResizeDrag = New-Object System.Windows.Forms.MouseEventArgs -ArgumentList ([System.Windows.Forms.MouseButtons]::Left), 1, ($ocrBox.Width + 110), ([Math]::Max(10, [int]($ocrBox.Height / 2))), 0
+    $rightResizeUp = New-Object System.Windows.Forms.MouseEventArgs -ArgumentList ([System.Windows.Forms.MouseButtons]::Left), 1, ($ocrBox.Width + 110), ([Math]::Max(10, [int]($ocrBox.Height / 2))), 0
+    $ocrResizeArgs = [object[]]::new(2)
+    $ocrResizeArgs[0] = [System.Windows.Forms.Control]$ocrBox
+    $ocrResizeArgs[1] = [System.Windows.Forms.MouseEventArgs]$rightResizeDown
+    $beginOcrBoxDrag.Invoke($form, $ocrResizeArgs)
+    $ocrResizeArgs[1] = [System.Windows.Forms.MouseEventArgs]$rightResizeDrag
+    $moveOcrBox.Invoke($form, $ocrResizeArgs)
+    $ocrResizeArgs[1] = [System.Windows.Forms.MouseEventArgs]$rightResizeUp
+    $endOcrBoxDrag.Invoke($form, $ocrResizeArgs)
+    [System.Windows.Forms.Application]::DoEvents()
+
+    $ocrAfterRightResize = [System.Drawing.Rectangle]$selectedField.GetValue($form)
+    if ($ocrAfterRightResize.Width -le $ocrBeforeRightResize.Width) {
+        throw "Dragging the OCR text box right edge did not expand it. Before=$ocrBeforeRightResize After=$ocrAfterRightResize"
+    }
+
+    $ocrBeforeLeftResize = [System.Drawing.Rectangle]$selectedField.GetValue($form)
+    $leftResizeDown = New-Object System.Windows.Forms.MouseEventArgs -ArgumentList ([System.Windows.Forms.MouseButtons]::Left), 1, 1, ([Math]::Max(10, [int]($ocrBox.Height / 2))), 0
+    $leftResizeDrag = New-Object System.Windows.Forms.MouseEventArgs -ArgumentList ([System.Windows.Forms.MouseButtons]::Left), 1, -80, ([Math]::Max(10, [int]($ocrBox.Height / 2))), 0
+    $leftResizeUp = New-Object System.Windows.Forms.MouseEventArgs -ArgumentList ([System.Windows.Forms.MouseButtons]::Left), 1, -80, ([Math]::Max(10, [int]($ocrBox.Height / 2))), 0
+    $ocrResizeArgs[1] = [System.Windows.Forms.MouseEventArgs]$leftResizeDown
+    $beginOcrBoxDrag.Invoke($form, $ocrResizeArgs)
+    $ocrResizeArgs[1] = [System.Windows.Forms.MouseEventArgs]$leftResizeDrag
+    $moveOcrBox.Invoke($form, $ocrResizeArgs)
+    $ocrResizeArgs[1] = [System.Windows.Forms.MouseEventArgs]$leftResizeUp
+    $endOcrBoxDrag.Invoke($form, $ocrResizeArgs)
+    [System.Windows.Forms.Application]::DoEvents()
+
+    $ocrAfterLeftResize = [System.Drawing.Rectangle]$selectedField.GetValue($form)
+    if ($ocrAfterLeftResize.Width -le $ocrBeforeLeftResize.Width) {
+        throw "Dragging the OCR text box left edge did not expand it. Before=$ocrBeforeLeftResize After=$ocrAfterLeftResize"
     }
 
     $ocrBeforeMove = [System.Drawing.Rectangle]$selectedField.GetValue($form)

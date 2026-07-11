@@ -84,11 +84,11 @@ namespace ScreenshotHotkeyTool
 
             if (!screenshotHotkeyWindow.Register(settings.Modifiers, settings.KeyCode))
             {
-                MessageBox.Show(settings.DisplayText + " 已被占用，请在设置里换一个快捷键。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(settings.DisplayText + " 快捷键监听失败，请重启工具或尝试以管理员身份运行。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             if (settings.OcrEnabled && !ocrHotkeyWindow.Register(settings.OcrModifiers, settings.OcrKeyCode))
             {
-                MessageBox.Show(settings.OcrDisplayText + " 已被占用，请在设置里换一个 OCR 快捷键。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(settings.OcrDisplayText + " OCR 快捷键监听失败，请重启工具或尝试以管理员身份运行。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
 
             var menu = new ContextMenuStrip();
@@ -120,7 +120,7 @@ namespace ScreenshotHotkeyTool
                 if (!ApplyHotkeySettings(newSettings))
                 {
                     ApplyHotkeySettings(oldSettings);
-                    MessageBox.Show("快捷键已被占用，请换一个组合。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show("快捷键监听失败，请重启工具或尝试以管理员身份运行。", "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
@@ -342,6 +342,7 @@ namespace ScreenshotHotkeyTool
         private Button arrowButton;
         private Button numberButton;
         private Button mosaicButton;
+        private Button cropButton;
         private Label sizeLabel;
         private Point startPoint;
         private Point currentPoint;
@@ -601,6 +602,7 @@ namespace ScreenshotHotkeyTool
                 Cursor = Cursors.SizeAll,
                 Visible = true
             };
+            editorCanvas.ImageCropped += delegate { ResizeAfterImageCrop(); };
             editorCanvas.MouseDown += BeginResizeSelectedImage;
             editorCanvas.MouseMove += ResizeSelectedImage;
             editorCanvas.MouseUp += EndResizeSelectedImage;
@@ -682,6 +684,7 @@ namespace ScreenshotHotkeyTool
             textButton = CreateToolButton("A", "文字");
             numberButton = CreateToolButton("①", "序号");
             mosaicButton = CreateToolButton("▦", "马赛克");
+            cropButton = CreateToolButton("裁", "裁剪");
             var ocrButton = CreateToolButton("中A", "识别文字");
             var undoButton = CreateToolButton("↶", "撤销");
             var saveButton = CreateToolButton("↓", "保存");
@@ -696,6 +699,7 @@ namespace ScreenshotHotkeyTool
             toolbar.Controls.Add(textButton);
             toolbar.Controls.Add(numberButton);
             toolbar.Controls.Add(mosaicButton);
+            toolbar.Controls.Add(cropButton);
             toolbar.Controls.Add(ocrButton);
             toolbar.Controls.Add(undoButton);
             toolbar.Controls.Add(saveButton);
@@ -709,6 +713,7 @@ namespace ScreenshotHotkeyTool
             textButton.Click += delegate { ToggleEditorMode(AnnotationMode.Text); };
             numberButton.Click += delegate { ToggleEditorMode(AnnotationMode.Number); };
             mosaicButton.Click += delegate { ToggleEditorMode(AnnotationMode.Mosaic); };
+            cropButton.Click += delegate { ToggleEditorMode(AnnotationMode.Crop); };
             undoButton.Click += delegate { editorCanvas.Undo(); };
             saveButton.Click += delegate { SaveEditedImage(); };
             copyButton.Click += delegate { CopyEditedImage(); };
@@ -759,29 +764,34 @@ namespace ScreenshotHotkeyTool
         private FlowLayoutPanel CreateOcrToolbar()
         {
             var toolbar = CreateFloatingToolbar(48);
-            var translateToGermanButton = CreateToolButton("\u8f6c\u5fb7\u6587", "\u8f6c\u5fb7\u6587");
-            var translateToChineseButton = CreateToolButton("\u8f6c\u4e2d\u6587", "\u8f6c\u4e2d\u6587");
-            var translateToEnglishButton = CreateToolButton("\u8f6c\u82f1\u6587", "\u8f6c\u82f1\u6587");
+            var translateButton = CreateToolButton("\u7ffb\u8bd1", "\u9009\u62e9\u7ffb\u8bd1\u76ee\u6807");
             var formatButton = CreateToolButton("\u53bb\u683c\u5f0f", "\u53bb\u683c\u5f0f");
             var copyButton = CreateToolButton("\u590d\u5236", "\u590d\u5236\u6587\u5b57");
             var saveTextButton = CreateToolButton("\u4fdd\u5b58", "\u4fdd\u5b58\u6587\u5b57");
             var closeButton = CreateToolButton("\u5173\u95ed", "\u5173\u95ed");
+            translateButton.Width = 72;
 
-            translateToChineseButton.AccessibleName = "zh-CN";
-            translateToEnglishButton.AccessibleName = "en";
-            translateToGermanButton.AccessibleName = "de";
+            var translateMenu = new ContextMenuStrip();
+            translateMenu.Items.Add("\u8f6c\u4e2d\u6587", null, delegate { TranslateInlineOcrText("zh-CN", translateButton); });
+            translateMenu.Items.Add("\u8f6c\u82f1\u6587", null, delegate { TranslateInlineOcrText("en", translateButton); });
+            translateMenu.Items.Add("\u8f6c\u5fb7\u6587", null, delegate { TranslateInlineOcrText("de", translateButton); });
 
-            toolbar.Controls.Add(translateToChineseButton);
-            toolbar.Controls.Add(translateToEnglishButton);
-            toolbar.Controls.Add(translateToGermanButton);
+            toolbar.Controls.Add(translateButton);
             toolbar.Controls.Add(formatButton);
             toolbar.Controls.Add(copyButton);
             toolbar.Controls.Add(saveTextButton);
             toolbar.Controls.Add(closeButton);
 
-            translateToChineseButton.Click += delegate { TranslateInlineOcrText("zh-CN", translateToChineseButton, translateToEnglishButton, translateToGermanButton); };
-            translateToEnglishButton.Click += delegate { TranslateInlineOcrText("en", translateToEnglishButton, translateToChineseButton, translateToGermanButton); };
-            translateToGermanButton.Click += delegate { TranslateInlineOcrText("de", translateToGermanButton, translateToChineseButton, translateToEnglishButton); };
+            translateButton.Click += delegate
+            {
+                if (inlineOcrShowingTranslation)
+                {
+                    RestoreInlineOcrOriginal(translateButton);
+                    return;
+                }
+
+                translateMenu.Show(translateButton, new Point(0, translateButton.Height));
+            };
             formatButton.Click += delegate
             {
                 if (inlineOcrBox == null)
@@ -801,7 +811,7 @@ namespace ScreenshotHotkeyTool
                     formatButton.Text = "\u590d\u539f\u683c\u5f0f";
                     toolTip.SetToolTip(formatButton, "\u590d\u539f\u683c\u5f0f");
                 }
-                ClearInlineTranslationState(translateToChineseButton, translateToEnglishButton, translateToGermanButton);
+                ClearInlineTranslationState(translateButton);
             };
             copyButton.Click += delegate
             {
@@ -988,7 +998,7 @@ namespace ScreenshotHotkeyTool
                 editorToolbar.BringToFront();
             if (styleToolbar != null)
                 styleToolbar.BringToFront();
-            styleToolbar.Visible = editorCanvas.Mode != AnnotationMode.None;
+            styleToolbar.Visible = editorCanvas.Mode != AnnotationMode.None && editorCanvas.Mode != AnnotationMode.Crop;
             UpdateEditorButtons();
             UpdateOverlayRegion();
             Invalidate();
@@ -1002,7 +1012,24 @@ namespace ScreenshotHotkeyTool
             MarkToolButton(arrowButton, editorCanvas.Mode == AnnotationMode.Arrow);
             MarkToolButton(numberButton, editorCanvas.Mode == AnnotationMode.Number);
             MarkToolButton(mosaicButton, editorCanvas.Mode == AnnotationMode.Mosaic);
+            MarkToolButton(cropButton, editorCanvas.Mode == AnnotationMode.Crop);
             editorCanvas.Cursor = editorCanvas.Mode == AnnotationMode.None ? Cursors.SizeAll : Cursors.Cross;
+        }
+
+        private void ResizeAfterImageCrop()
+        {
+            if (editorCanvas == null)
+                return;
+
+            if (selectedOriginalImage != null)
+                selectedOriginalImage.Dispose();
+            selectedOriginalImage = (Bitmap)editorCanvas.Image.Clone();
+            var screenBounds = new Rectangle(
+                Left + selectedBounds.Left,
+                Top + selectedBounds.Top,
+                editorCanvas.Image.Width,
+                editorCanvas.Image.Height);
+            ResizeFloatingEditorWindow(screenBounds, 190);
         }
 
         private static void MarkToolButton(Button button, bool selected)
@@ -1143,7 +1170,12 @@ namespace ScreenshotHotkeyTool
                 Math.Max(0, imageScreenBounds.Top - top),
                 imageScreenBounds.Width,
                 imageScreenBounds.Height);
-            editorCanvas.Bounds = selectedBounds;
+            if (editorCanvas != null)
+                editorCanvas.Bounds = selectedBounds;
+            if (inlineOcrBox != null)
+                inlineOcrBox.Bounds = selectedBounds;
+            if (ocrResizeGrip != null)
+                ocrResizeGrip.Bounds = ResizeGripBounds();
             PositionFloatingToolbars();
             UpdateOverlayRegion();
             Invalidate();
@@ -1211,7 +1243,8 @@ namespace ScreenshotHotkeyTool
             inlineOcrFormatRemoved = false;
             inlineOcrShowingTranslation = false;
             inlineOcrTextBeforeTranslation = null;
-            EnsureFloatingWindowHasOcrWorkspace();
+            var ocrFont = new Font("Microsoft YaHei UI", 14, FontStyle.Regular);
+            EnsureFloatingWindowHasOcrWorkspace(inlineOcrFormattedText, ocrFont);
 
             if (editorCanvas != null)
                 editorCanvas.Visible = false;
@@ -1224,7 +1257,7 @@ namespace ScreenshotHotkeyTool
             {
                 Bounds = selectedBounds,
                 WordWrap = true,
-                Font = new Font("Microsoft YaHei UI", 14, FontStyle.Regular),
+                Font = ocrFont,
                 BorderStyle = BorderStyle.FixedSingle,
                 Text = string.IsNullOrWhiteSpace(inlineOcrFormattedText) ? "未识别到文字" : inlineOcrFormattedText,
                 BackColor = Color.White,
@@ -1263,23 +1296,92 @@ namespace ScreenshotHotkeyTool
                 return;
 
             inlineOcrBox.Text = string.IsNullOrWhiteSpace(text) ? "\u672a\u8bc6\u522b\u5230\u6587\u5b57" : text;
+            ExpandInlineOcrBoxForText(inlineOcrBox.Text);
             Invalidate();
         }
 
-        private void EnsureFloatingWindowHasOcrWorkspace()
+        private void EnsureFloatingWindowHasOcrWorkspace(string text, Font font)
         {
             var toolbarReserve = 86;
-            var targetWidth = Math.Min(virtualBounds.Width, Math.Max(selectedBounds.Width, 860));
-            var targetHeight = Math.Min(Math.Max(120, virtualBounds.Height - toolbarReserve), Math.Max(selectedBounds.Height, 520));
-            var centerX = Bounds.Left + selectedBounds.Left + selectedBounds.Width / 2;
-            var centerY = Bounds.Top + selectedBounds.Top + selectedBounds.Height / 2;
+            var textScreenLeft = Bounds.Left + selectedBounds.Left;
+            var textScreenTop = Bounds.Top + selectedBounds.Top;
+            var textWidth = selectedBounds.Width;
+            var textHeight = selectedBounds.Height;
+            var desiredSize = MeasureInlineOcrBoxSize(text, font, new Size(textWidth, textHeight), toolbarReserve);
+            var targetWidth = desiredSize.Width;
+            var targetHeight = desiredSize.Height;
             var windowWidth = targetWidth;
             var windowHeight = Math.Min(virtualBounds.Height, targetHeight + toolbarReserve);
-            var left = Clamp(centerX - targetWidth / 2, virtualBounds.Left, Math.Max(virtualBounds.Left, virtualBounds.Right - windowWidth));
-            var top = Clamp(centerY - targetHeight / 2, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - windowHeight));
+            var left = Clamp(textScreenLeft, virtualBounds.Left, Math.Max(virtualBounds.Left, virtualBounds.Right - windowWidth));
+            var top = Clamp(textScreenTop, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - windowHeight));
 
             Bounds = new Rectangle(left, top, windowWidth, windowHeight);
-            selectedBounds = new Rectangle(0, 0, targetWidth, targetHeight);
+            selectedBounds = new Rectangle(
+                0,
+                0,
+                targetWidth,
+                targetHeight);
+        }
+
+        private void ExpandInlineOcrBoxForText(string text)
+        {
+            if (inlineOcrBox == null)
+                return;
+
+            var desiredSize = MeasureInlineOcrBoxSize(text, inlineOcrBox.Font, selectedBounds.Size, 86);
+            if (desiredSize.Width <= selectedBounds.Width && desiredSize.Height <= selectedBounds.Height)
+                return;
+
+            var screenBounds = new Rectangle(
+                Left + selectedBounds.Left,
+                Top + selectedBounds.Top,
+                Math.Max(selectedBounds.Width, desiredSize.Width),
+                Math.Max(selectedBounds.Height, desiredSize.Height));
+            ResizeFloatingEditorWindow(screenBounds, 86);
+        }
+
+        private Size MeasureInlineOcrBoxSize(string text, Font font, Size minimumSize, int toolbarReserve)
+        {
+            var displayText = string.IsNullOrWhiteSpace(text) ? "\u672a\u8bc6\u522b\u5230\u6587\u5b57" : text;
+            var minWidth = Math.Max(minimumSize.Width, 260);
+            var minHeight = Math.Max(minimumSize.Height, 120);
+            var maxWidth = Math.Min(Math.Max(minWidth, 900), Math.Max(minWidth, virtualBounds.Width - 24));
+            var maxHeight = Math.Min(Math.Max(minHeight, 720), Math.Max(minHeight, virtualBounds.Height - toolbarReserve - 24));
+
+            var longestLineWidth = minWidth;
+            var lines = displayText.Replace("\r\n", "\n").Split('\n');
+            foreach (var line in lines)
+            {
+                var measuredLine = TextRenderer.MeasureText(
+                    string.IsNullOrEmpty(line) ? " " : line,
+                    font,
+                    new Size(int.MaxValue, int.MaxValue),
+                    TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                longestLineWidth = Math.Max(longestLineWidth, measuredLine.Width + 36);
+            }
+
+            var targetWidth = Clamp(Math.Min(longestLineWidth, 760), minWidth, maxWidth);
+            var targetHeight = MeasureWrappedInlineOcrTextHeight(displayText, font, targetWidth);
+            while (targetHeight > maxHeight && targetWidth < maxWidth)
+            {
+                targetWidth = Math.Min(maxWidth, targetWidth + 120);
+                targetHeight = MeasureWrappedInlineOcrTextHeight(displayText, font, targetWidth);
+            }
+
+            return new Size(
+                targetWidth,
+                Clamp(targetHeight, minHeight, maxHeight));
+        }
+
+        private static int MeasureWrappedInlineOcrTextHeight(string text, Font font, int boxWidth)
+        {
+            var textWidth = Math.Max(1, boxWidth - 28);
+            var measured = TextRenderer.MeasureText(
+                text,
+                font,
+                new Size(textWidth, int.MaxValue),
+                TextFormatFlags.TextBoxControl | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+            return measured.Height + 32;
         }
 
         private void TranslateInlineOcrText(string targetLanguage, Button primaryButton, params Button[] secondaryButtons)
@@ -1289,10 +1391,7 @@ namespace ScreenshotHotkeyTool
 
             if (inlineOcrShowingTranslation)
             {
-                SetInlineOcrText(inlineOcrTextBeforeTranslation ?? inlineOcrFormattedText);
-                inlineOcrShowingTranslation = false;
-                inlineOcrTextBeforeTranslation = null;
-                SetTranslationButtonText(primaryButton, targetLanguage);
+                RestoreInlineOcrOriginal(primaryButton);
                 return;
             }
 
@@ -1367,7 +1466,7 @@ namespace ScreenshotHotkeyTool
             foreach (var button in buttons)
             {
                 if (button != null)
-                    SetTranslationButtonText(button, button.AccessibleName);
+                    SetTranslationButtonText(button, string.IsNullOrEmpty(button.AccessibleName) ? null : button.AccessibleName);
             }
         }
 
@@ -1380,8 +1479,18 @@ namespace ScreenshotHotkeyTool
             toolTip.SetToolTip(button, button.Text);
         }
 
+        private void RestoreInlineOcrOriginal(Button translateButton)
+        {
+            SetInlineOcrText(inlineOcrTextBeforeTranslation ?? inlineOcrFormattedText);
+            inlineOcrShowingTranslation = false;
+            inlineOcrTextBeforeTranslation = null;
+            SetTranslationButtonText(translateButton, null);
+        }
+
         private static string TranslationButtonText(string targetLanguage)
         {
+            if (string.IsNullOrEmpty(targetLanguage))
+                return "\u7ffb\u8bd1";
             if (targetLanguage == "en")
                 return "\u8f6c\u82f1";
             if (targetLanguage == "de")
@@ -1426,8 +1535,9 @@ namespace ScreenshotHotkeyTool
 
             resizingInlineOcrBox = true;
             var sourceControl = sender as Control;
-            resizeStartPoint = PointToClient(sourceControl.PointToScreen(e.Location));
+            resizeStartPoint = sourceControl.PointToScreen(e.Location);
             resizeStartBounds = selectedBounds;
+            resizeStartWindowBounds = Bounds;
         }
 
         private void ResizeInlineOcrBox(object sender, MouseEventArgs e)
@@ -1453,30 +1563,29 @@ namespace ScreenshotHotkeyTool
                 return;
 
             var sourceControl = sender as Control;
-            var currentPoint = PointToClient(sourceControl.PointToScreen(e.Location));
-            var width = Math.Max(180, resizeStartBounds.Width + currentPoint.X - resizeStartPoint.X);
-            var height = Math.Max(110, resizeStartBounds.Height + currentPoint.Y - resizeStartPoint.Y);
-            width = Math.Min(width, ClientSize.Width - resizeStartBounds.Left);
-            height = Math.Min(height, ClientSize.Height - resizeStartBounds.Top);
-            var left = resizeStartBounds.Left;
-            var top = resizeStartBounds.Top;
-            var right = resizeStartBounds.Right;
-            var bottom = resizeStartBounds.Bottom;
-            if (resizeLeft)
-                left = Clamp(currentPoint.X, 0, resizeStartBounds.Right - 180);
-            if (resizeTop)
-                top = Clamp(currentPoint.Y, 0, resizeStartBounds.Bottom - 110);
-            if (resizeRight)
-                right = Clamp(currentPoint.X, resizeStartBounds.Left + 180, ClientSize.Width);
-            if (resizeBottom)
-                bottom = Clamp(currentPoint.Y, resizeStartBounds.Top + 110, ClientSize.Height);
+            var currentPoint = sourceControl.PointToScreen(e.Location);
+            var dx = currentPoint.X - resizeStartPoint.X;
+            var dy = currentPoint.Y - resizeStartPoint.Y;
+            var textLeft = resizeStartWindowBounds.Left + resizeStartBounds.Left;
+            var textTop = resizeStartWindowBounds.Top + resizeStartBounds.Top;
+            var left = textLeft;
+            var top = textTop;
+            var right = textLeft + resizeStartBounds.Width;
+            var bottom = textTop + resizeStartBounds.Height;
+            const int minWidth = 180;
+            const int minHeight = 110;
+            const int toolbarReserve = 86;
 
-            selectedBounds = new Rectangle(left, top, right - left, bottom - top);
-            inlineOcrBox.Bounds = selectedBounds;
-            ocrResizeGrip.Bounds = ResizeGripBounds();
-            PositionFloatingToolbars();
-            UpdateOverlayRegion();
-            Invalidate();
+            if (resizeLeft)
+                left = Clamp(textLeft + dx, virtualBounds.Left, right - minWidth);
+            if (resizeTop)
+                top = Clamp(textTop + dy, virtualBounds.Top, bottom - minHeight);
+            if (resizeRight)
+                right = Clamp(right + dx, left + minWidth, virtualBounds.Right);
+            if (resizeBottom)
+                bottom = Clamp(bottom + dy, top + minHeight, virtualBounds.Bottom - toolbarReserve);
+
+            ResizeFloatingEditorWindow(new Rectangle(left, top, right - left, bottom - top), toolbarReserve);
         }
 
         private void EndResizeInlineOcrBox(object sender, MouseEventArgs e)
@@ -2373,18 +2482,35 @@ namespace ScreenshotHotkeyTool
                 {
                     preparedImage.Save(inputPath, ImageFormat.Png);
                 }
-                RunTesseract(enginePath, inputPath, outputBasePath, language, tessdataDirectory, "tsv");
+                var candidates = new List<string>();
+                foreach (var pageSegMode in new[] { 6, 4, 11 })
+                {
+                    var passOutputBasePath = outputBasePath + "_" + pageSegMode;
+                    var passOutputTextPath = passOutputBasePath + ".txt";
+                    var passOutputTsvPath = passOutputBasePath + ".tsv";
+                    try
+                    {
+                        RunTesseract(enginePath, inputPath, passOutputBasePath, language, tessdataDirectory, "tsv", pageSegMode);
+                        var formattedText = ReadTsvOutput(passOutputTsvPath);
+                        if (!string.IsNullOrWhiteSpace(formattedText))
+                            candidates.Add(formattedText);
 
-                var formattedText = ReadTsvOutput(outputTsvPath);
-                if (!string.IsNullOrWhiteSpace(formattedText))
-                    return formattedText;
+                        RunTesseract(enginePath, inputPath, passOutputBasePath, language, tessdataDirectory, string.Empty, pageSegMode);
+                        if (File.Exists(passOutputTextPath))
+                        {
+                            var plainText = RemoveCjkInterCharacterSpaces(File.ReadAllText(passOutputTextPath));
+                            if (!string.IsNullOrWhiteSpace(plainText))
+                                candidates.Add(plainText);
+                        }
+                    }
+                    finally
+                    {
+                        TryDelete(passOutputTextPath);
+                        TryDelete(passOutputTsvPath);
+                    }
+                }
 
-                RunTesseract(enginePath, inputPath, outputBasePath, language, tessdataDirectory, string.Empty);
-
-                if (!File.Exists(outputTextPath))
-                    return string.Empty;
-
-                return RemoveCjkInterCharacterSpaces(File.ReadAllText(outputTextPath));
+                return ChooseBestOcrText(candidates);
             }
             catch (Exception ex)
             {
@@ -2398,9 +2524,9 @@ namespace ScreenshotHotkeyTool
             }
         }
 
-        private static void RunTesseract(string enginePath, string inputPath, string outputBasePath, string language, string tessdataDirectory, string outputFormat)
+        private static void RunTesseract(string enginePath, string inputPath, string outputBasePath, string language, string tessdataDirectory, string outputFormat, int pageSegMode)
         {
-            var arguments = Quote(inputPath) + " " + Quote(outputBasePath) + " -l " + language + " --oem 1 --psm 6 --dpi 300" + TessdataArgument(tessdataDirectory) + " -c preserve_interword_spaces=1";
+            var arguments = Quote(inputPath) + " " + Quote(outputBasePath) + " -l " + language + " --oem 1 --psm " + pageSegMode + " --dpi 300" + TessdataArgument(tessdataDirectory) + " -c preserve_interword_spaces=1";
             if (string.Equals(outputFormat, "tsv", StringComparison.OrdinalIgnoreCase))
                 arguments += " -c tessedit_create_tsv=1";
             else if (!string.IsNullOrWhiteSpace(outputFormat))
@@ -2430,6 +2556,107 @@ namespace ScreenshotHotkeyTool
                 if (process.ExitCode != 0)
                     throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "OCR 引擎返回失败。" : error.Trim());
             }
+        }
+
+        private static string ChooseBestOcrText(List<string> candidates)
+        {
+            if (candidates == null || candidates.Count == 0)
+                return string.Empty;
+
+            var bestText = string.Empty;
+            var bestScore = int.MinValue;
+            foreach (var candidate in candidates)
+            {
+                var normalized = NormalizeOcrCandidate(candidate);
+                if (string.IsNullOrWhiteSpace(normalized))
+                    continue;
+
+                var score = ScoreOcrCandidate(normalized);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestText = normalized;
+                }
+            }
+
+            return bestText;
+        }
+
+        private static string NormalizeOcrCandidate(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            var cleaned = new List<string>();
+            foreach (var line in lines)
+                cleaned.Add(line.TrimEnd());
+
+            return string.Join(Environment.NewLine, cleaned.ToArray()).Trim();
+        }
+
+        private static int ScoreOcrCandidate(string text)
+        {
+            var score = 0;
+            var cjkCount = 0;
+            var latinCount = 0;
+            var digitCount = 0;
+            var punctuationCount = 0;
+            var gibberishRuns = 0;
+            var currentRepeated = 1;
+            var previous = '\0';
+
+            foreach (var ch in text)
+            {
+                if (ch >= '\u4e00' && ch <= '\u9fff')
+                {
+                    cjkCount++;
+                    score += 4;
+                }
+                else if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'))
+                {
+                    latinCount++;
+                    score += 2;
+                }
+                else if (char.IsDigit(ch))
+                {
+                    digitCount++;
+                    score += 2;
+                }
+                else if ("。！？；：，、,.:-_/()[]{}·•●○".IndexOf(ch) >= 0)
+                {
+                    punctuationCount++;
+                    score += 1;
+                }
+                else if (!char.IsWhiteSpace(ch))
+                {
+                    score -= 3;
+                }
+
+                if (!char.IsWhiteSpace(ch) && ch == previous)
+                {
+                    currentRepeated++;
+                    if (currentRepeated >= 3)
+                        gibberishRuns++;
+                }
+                else
+                {
+                    currentRepeated = 1;
+                    previous = ch;
+                }
+            }
+
+            var nonEmptyLines = 0;
+            foreach (var line in text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
+            {
+                if (!string.IsNullOrWhiteSpace(line))
+                    nonEmptyLines++;
+            }
+
+            score += nonEmptyLines * 12;
+            score += Math.Min(80, cjkCount + latinCount + digitCount + punctuationCount);
+            score -= gibberishRuns * 20;
+            return score;
         }
 
         private static Bitmap PrepareImageForOcr(Bitmap image)
@@ -2819,6 +3046,8 @@ namespace ScreenshotHotkeyTool
 
         public AnnotationMode Mode { get; set; }
 
+        public event EventHandler ImageCropped;
+
         public Color StrokeColor { get; set; }
 
         public int StrokeWidth { get; set; }
@@ -2839,7 +3068,7 @@ namespace ScreenshotHotkeyTool
 
             if (Mode == AnnotationMode.Arrow && isDrawing)
                 DrawPreviewArrow(e.Graphics, rectangleStartControlPoint, rectangleCurrentControlPoint);
-            else if ((Mode == AnnotationMode.Rectangle || Mode == AnnotationMode.Text || Mode == AnnotationMode.Mosaic) && isDrawing)
+            else if ((Mode == AnnotationMode.Rectangle || Mode == AnnotationMode.Text || Mode == AnnotationMode.Mosaic || Mode == AnnotationMode.Crop) && isDrawing)
                 DrawPreviewRectangle(e.Graphics, rectangleStartControlPoint, rectangleCurrentControlPoint);
         }
 
@@ -2857,7 +3086,7 @@ namespace ScreenshotHotkeyTool
                 return;
             }
 
-            if (Mode != AnnotationMode.Text)
+            if (Mode != AnnotationMode.Text && Mode != AnnotationMode.Crop)
                 PushUndo(Mode == AnnotationMode.Rectangle);
             isDrawing = true;
             var imagePoint = ToImagePoint(e.Location);
@@ -2875,7 +3104,7 @@ namespace ScreenshotHotkeyTool
                 return;
 
             var nextPoint = ToImagePoint(e.Location);
-            if (Mode == AnnotationMode.Rectangle || Mode == AnnotationMode.Text || Mode == AnnotationMode.Arrow || Mode == AnnotationMode.Mosaic)
+            if (Mode == AnnotationMode.Rectangle || Mode == AnnotationMode.Text || Mode == AnnotationMode.Arrow || Mode == AnnotationMode.Mosaic || Mode == AnnotationMode.Crop)
             {
                 rectangleCurrentPoint = nextPoint;
                 rectangleCurrentControlPoint = e.Location;
@@ -2934,6 +3163,16 @@ namespace ScreenshotHotkeyTool
                 return;
             }
 
+            if (isDrawing && Mode == AnnotationMode.Crop)
+            {
+                rectangleCurrentPoint = ToImagePoint(e.Location);
+                rectangleCurrentControlPoint = e.Location;
+                isDrawing = false;
+                ApplyCrop(NormalizeRectangle(rectangleStartPoint, rectangleCurrentPoint));
+                Invalidate();
+                return;
+            }
+
             if (isDrawing && Mode == AnnotationMode.Rectangle)
             {
                 rectangleCurrentPoint = ToImagePoint(e.Location);
@@ -2966,10 +3205,13 @@ namespace ScreenshotHotkeyTool
             if (undoStack.Count == 0)
                 return;
 
+            var previousSize = image.Size;
             image.Dispose();
             image = undoStack.Pop();
             if (undoRectangleFlags.Count > 0 && undoRectangleFlags.Pop())
                 PopRectangleSelection();
+            if (image.Size != previousSize)
+                RaiseImageCropped();
             Invalidate();
         }
 
@@ -2982,6 +3224,7 @@ namespace ScreenshotHotkeyTool
             hasRectangleSelection = false;
             lastRectangleSelection = Rectangle.Empty;
             nextNumber = 1;
+            RaiseImageCropped();
             Invalidate();
         }
 
@@ -3170,6 +3413,30 @@ namespace ScreenshotHotkeyTool
             }
         }
 
+        private void ApplyCrop(Rectangle rectangle)
+        {
+            rectangle = ClampRectangle(rectangle, image.Width, image.Height);
+            if (rectangle.Width < 4 || rectangle.Height < 4)
+                return;
+
+            PushUndo(false);
+            var cropped = CropBitmap(image, rectangle);
+            image.Dispose();
+            image = cropped;
+            rectangleSelections.Clear();
+            hasRectangleSelection = false;
+            lastRectangleSelection = Rectangle.Empty;
+            nextNumber = 1;
+            RaiseImageCropped();
+        }
+
+        private void RaiseImageCropped()
+        {
+            var handler = ImageCropped;
+            if (handler != null)
+                handler(this, EventArgs.Empty);
+        }
+
         private static Font CreateFittingFont(Graphics graphics, string text, Rectangle rectangle)
         {
             var size = Math.Max(8, Math.Min(36, rectangle.Height - 4));
@@ -3335,7 +3602,8 @@ namespace ScreenshotHotkeyTool
         Text,
         Arrow,
         Number,
-        Mosaic
+        Mosaic,
+        Crop
     }
 
     internal static class TrayIconFactory
@@ -3816,9 +4084,21 @@ namespace ScreenshotHotkeyTool
     internal sealed class HotkeyWindow : NativeWindow, IDisposable
     {
         private const int WM_HOTKEY = 0x0312;
+        private const int WM_FALLBACK_HOTKEY = 0x0451;
+        private const int WH_KEYBOARD_LL = 13;
+        private const int WM_KEYDOWN = 0x0100;
+        private const int WM_SYSKEYDOWN = 0x0104;
+        private const int WM_KEYUP = 0x0101;
+        private const int WM_SYSKEYUP = 0x0105;
         private readonly int hotkeyId;
         private readonly Action onHotkey;
+        private LowLevelKeyboardProc hookCallback;
+        private IntPtr hookHandle;
+        private HotkeyModifiers fallbackModifiers;
+        private uint fallbackKeyCode;
         private bool registered;
+        private bool fallbackActive;
+        private bool fallbackCombinationDown;
 
         public HotkeyWindow(int hotkeyId, Action onHotkey)
         {
@@ -3832,21 +4112,28 @@ namespace ScreenshotHotkeyTool
             Unregister();
 
             registered = RegisterHotKey(Handle, hotkeyId, (uint)modifiers, keyCode);
-            return registered;
+            if (registered)
+                return true;
+
+            return RegisterFallbackHook(modifiers, keyCode);
         }
 
         public void Unregister()
         {
-            if (!registered)
-                return;
+            if (registered)
+            {
+                UnregisterHotKey(Handle, hotkeyId);
+                registered = false;
+            }
 
-            UnregisterHotKey(Handle, hotkeyId);
-            registered = false;
+            UnregisterFallbackHook();
         }
 
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == hotkeyId)
+                onHotkey();
+            else if (m.Msg == WM_FALLBACK_HOTKEY && m.WParam.ToInt32() == hotkeyId)
                 onHotkey();
             base.WndProc(ref m);
         }
@@ -3862,5 +4149,94 @@ namespace ScreenshotHotkeyTool
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        private bool RegisterFallbackHook(HotkeyModifiers modifiers, uint keyCode)
+        {
+            fallbackModifiers = modifiers;
+            fallbackKeyCode = keyCode;
+            fallbackCombinationDown = false;
+            hookCallback = HookProc;
+            hookHandle = SetWindowsHookEx(WH_KEYBOARD_LL, hookCallback, GetModuleHandle(null), 0);
+            fallbackActive = hookHandle != IntPtr.Zero;
+            return fallbackActive;
+        }
+
+        private void UnregisterFallbackHook()
+        {
+            if (!fallbackActive)
+                return;
+
+            UnhookWindowsHookEx(hookHandle);
+            hookHandle = IntPtr.Zero;
+            hookCallback = null;
+            fallbackActive = false;
+            fallbackCombinationDown = false;
+        }
+
+        private IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0)
+            {
+                var message = wParam.ToInt32();
+                var keyCode = (uint)Marshal.ReadInt32(lParam);
+                if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN)
+                {
+                    if (keyCode == fallbackKeyCode && IsFallbackCombinationPressed())
+                    {
+                        if (!fallbackCombinationDown)
+                        {
+                            fallbackCombinationDown = true;
+                            PostMessage(Handle, WM_FALLBACK_HOTKEY, new IntPtr(hotkeyId), IntPtr.Zero);
+                        }
+                        return new IntPtr(1);
+                    }
+                }
+                else if (message == WM_KEYUP || message == WM_SYSKEYUP)
+                {
+                    if (keyCode == fallbackKeyCode || !IsFallbackCombinationPressed())
+                        fallbackCombinationDown = false;
+                }
+            }
+
+            return CallNextHookEx(hookHandle, nCode, wParam, lParam);
+        }
+
+        private bool IsFallbackCombinationPressed()
+        {
+            if ((fallbackModifiers & HotkeyModifiers.Control) != 0 && !IsKeyPressed(Keys.ControlKey))
+                return false;
+            if ((fallbackModifiers & HotkeyModifiers.Shift) != 0 && !IsKeyPressed(Keys.ShiftKey))
+                return false;
+            if ((fallbackModifiers & HotkeyModifiers.Alt) != 0 && !IsKeyPressed(Keys.Menu))
+                return false;
+            if ((fallbackModifiers & HotkeyModifiers.Win) != 0 && !IsKeyPressed(Keys.LWin) && !IsKeyPressed(Keys.RWin))
+                return false;
+            return true;
+        }
+
+        private static bool IsKeyPressed(Keys key)
+        {
+            return (GetAsyncKeyState((int)key) & 0x8000) != 0;
+        }
+
+        private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
     }
 }

@@ -116,6 +116,22 @@ if ($source -notmatch 'AnnotationMode\.Mosaic') {
     throw 'Inline screenshot editor should include mosaic redaction.'
 }
 
+if ($source -notmatch 'AnnotationMode\.Crop') {
+    throw 'Inline screenshot editor should include crop mode.'
+}
+
+if ($source -notmatch 'cropButton = CreateToolButton') {
+    throw 'Inline screenshot editor should include a visible crop button.'
+}
+
+if ($source -notmatch 'ApplyCrop') {
+    throw 'Inline screenshot editor should crop the image after selecting a crop rectangle.'
+}
+
+if ($source -notmatch 'ImageCropped') {
+    throw 'Cropping should notify the floating editor so the window follows the cropped image size.'
+}
+
 if ($source -notmatch 'Clipboard\.SetImage\(\(Bitmap\)editorCanvas\.Image\.Clone\(\)\)') {
     throw 'Inline editor done action should copy the edited screenshot to the clipboard.'
 }
@@ -148,12 +164,18 @@ if ($source -notmatch 'InlineOcrTextControl inlineOcrBox') {
     throw 'Inline OCR result should use the custom visible text control in the floating editor.'
 }
 
-if ($source -notmatch 'translateToGermanButton') {
-    throw 'Inline OCR toolbar should include German translation.'
+if ($source -notmatch 'var translateMenu = new ContextMenuStrip\(\)') {
+    throw 'Inline OCR toolbar should put translation targets under one dropdown menu.'
 }
 
-if ($source -notmatch 'TranslateInlineOcrText\("de"') {
-    throw 'Inline OCR toolbar should translate to German.'
+if ($source -notmatch 'CreateToolButton\("\\u7ffb\\u8bd1", "\\u9009\\u62e9\\u7ffb\\u8bd1\\u76ee\\u6807"\)') {
+    throw 'Inline OCR toolbar should show one main translate button.'
+}
+
+if ($source -notmatch 'TranslateInlineOcrText\("zh-CN", translateButton\)' -or
+    $source -notmatch 'TranslateInlineOcrText\("en", translateButton\)' -or
+    $source -notmatch 'TranslateInlineOcrText\("de", translateButton\)') {
+    throw 'Inline OCR translate dropdown should include Chinese, English, and German.'
 }
 
 if ($source -notmatch 'WordWrap = true') {
@@ -198,6 +220,14 @@ if ($source -notmatch 'ResizeInlineOcrBox') {
 
 if ($source -notmatch 'EnsureFloatingWindowHasOcrWorkspace') {
     throw 'Inline OCR result should reserve enough floating workspace for resizing.'
+}
+
+if ($source -match 'Math\.Max\(selectedBounds\.Width, 860\)' -or $source -match 'Math\.Max\(selectedBounds\.Height, 520\)') {
+    throw 'Inline OCR result should not force a large text box instead of using the selected region size.'
+}
+
+if ($source -notmatch 'textWidth = selectedBounds\.Width' -or $source -notmatch 'textHeight = selectedBounds\.Height') {
+    throw 'Inline OCR text box should start from the selected region size.'
 }
 
 if ($source -notmatch 'GetInlineOcrResizeEdges') {
