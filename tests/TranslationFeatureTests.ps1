@@ -15,6 +15,12 @@ if ($source -notmatch 'translateToGermanButton') {
     throw 'OCR result window should include a translate-to-German button.'
 }
 
+foreach ($buttonName in @('translateToFrenchButton', 'translateToSpanishButton', 'translateToItalianButton', 'translateToRussianButton')) {
+    if ($source -notmatch $buttonName) {
+        throw "OCR result window should include $buttonName."
+    }
+}
+
 $toChineseLabel = ([char]0x8F6C).ToString() + ([char]0x4E2D).ToString() + ([char]0x6587).ToString()
 $toEnglishLabel = ([char]0x8F6C).ToString() + ([char]0x82F1).ToString() + ([char]0x6587).ToString()
 $toGermanLabel = ([char]0x8F6C).ToString() + ([char]0x5FB7).ToString() + ([char]0x6587).ToString()
@@ -39,6 +45,15 @@ if ($source -notmatch 'TranslateInlineOcrText\("de"') {
     throw 'Inline OCR toolbar should translate to German.'
 }
 
+foreach ($language in @('fr', 'es', 'it', 'ru')) {
+    if ($source -notmatch ('TranslateCurrentText\("' + $language + '"')) {
+        throw "OCR result window should translate to $language."
+    }
+    if ($source -notmatch ('TranslateInlineOcrText\("' + $language + '"')) {
+        throw "Inline OCR toolbar should translate to $language."
+    }
+}
+
 if ($source -match 'return "\?\?\?"') {
     throw 'Translation button labels should not fall back to question marks.'
 }
@@ -59,6 +74,12 @@ if ($source -notmatch '\\u8f6c\\u5fb7') {
     throw 'German translation restore label should return to a readable Chinese button label.'
 }
 
+foreach ($escapedLabel in @('\\u8f6c\\u6cd5', '\\u8f6c\\u897f', '\\u8f6c\\u610f', '\\u8f6c\\u4fc4')) {
+    if ($source -notmatch $escapedLabel) {
+        throw "New inline translation restore label should use readable Chinese Unicode label: $escapedLabel"
+    }
+}
+
 if ($source -notmatch 'internal static class TranslationRunner') {
     throw 'Translation logic should be isolated in TranslationRunner.'
 }
@@ -73,6 +94,16 @@ if ($source -notmatch 'clients5.google.com') {
 
 if ($source -notmatch 'BaiduTranslate') {
     throw 'Translation runner should support Baidu Translate for computers that cannot access Google.'
+}
+
+if ($source -notmatch 'BaiduTargetLanguage') {
+    throw 'Translation runner should map target languages to Baidu language codes.'
+}
+
+foreach ($baiduCode in @('"fra"', '"spa"', '"it"', '"ru"')) {
+    if ($source -notmatch [Regex]::Escape($baiduCode)) {
+        throw "Baidu translation should support target code $baiduCode."
+    }
 }
 
 if ($source -notmatch 'TranslationProvider') {

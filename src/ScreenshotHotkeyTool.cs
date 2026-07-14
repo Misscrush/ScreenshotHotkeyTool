@@ -775,6 +775,10 @@ namespace ScreenshotHotkeyTool
             translateMenu.Items.Add("\u8f6c\u4e2d\u6587", null, delegate { TranslateInlineOcrText("zh-CN", translateButton); });
             translateMenu.Items.Add("\u8f6c\u82f1\u6587", null, delegate { TranslateInlineOcrText("en", translateButton); });
             translateMenu.Items.Add("\u8f6c\u5fb7\u6587", null, delegate { TranslateInlineOcrText("de", translateButton); });
+            translateMenu.Items.Add("\u8f6c\u6cd5\u8bed", null, delegate { TranslateInlineOcrText("fr", translateButton); });
+            translateMenu.Items.Add("\u8f6c\u897f\u73ed\u7259\u8bed", null, delegate { TranslateInlineOcrText("es", translateButton); });
+            translateMenu.Items.Add("\u8f6c\u610f\u5927\u5229\u8bed", null, delegate { TranslateInlineOcrText("it", translateButton); });
+            translateMenu.Items.Add("\u8f6c\u4fc4\u8bed", null, delegate { TranslateInlineOcrText("ru", translateButton); });
 
             toolbar.Controls.Add(translateButton);
             toolbar.Controls.Add(formatButton);
@@ -1495,6 +1499,14 @@ namespace ScreenshotHotkeyTool
                 return "\u8f6c\u82f1";
             if (targetLanguage == "de")
                 return "\u8f6c\u5fb7";
+            if (targetLanguage == "fr")
+                return "\u8f6c\u6cd5";
+            if (targetLanguage == "es")
+                return "\u8f6c\u897f";
+            if (targetLanguage == "it")
+                return "\u8f6c\u610f";
+            if (targetLanguage == "ru")
+                return "\u8f6c\u4fc4";
             return "\u8f6c\u4e2d";
         }
 
@@ -2028,10 +2040,18 @@ namespace ScreenshotHotkeyTool
         private readonly Button translateToEnglishButton;
         private readonly Button translateToChineseButton;
         private readonly Button translateToGermanButton;
+        private readonly Button translateToFrenchButton;
+        private readonly Button translateToSpanishButton;
+        private readonly Button translateToItalianButton;
+        private readonly Button translateToRussianButton;
         private const string TranslateToEnglishText = "转英文";
         private const string TranslateToChineseText = "转中文";
         private const string RestoreOriginalTextLabel = "复原原文";
         private const string TranslateToGermanText = "转德文";
+        private const string TranslateToFrenchText = "转法语";
+        private const string TranslateToSpanishText = "转西语";
+        private const string TranslateToItalianText = "转意语";
+        private const string TranslateToRussianText = "转俄语";
         private string textBeforeTranslation;
         private bool formatRemoved;
         private bool formatRemovedBeforeTranslation;
@@ -2079,6 +2099,10 @@ namespace ScreenshotHotkeyTool
             translateToEnglishButton = new Button { Text = TranslateToEnglishText, Width = 78, Height = 30 };
             translateToChineseButton = new Button { Text = TranslateToChineseText, Width = 78, Height = 30 };
             translateToGermanButton = new Button { Text = TranslateToGermanText, Width = 78, Height = 30 };
+            translateToFrenchButton = new Button { Text = TranslateToFrenchText, Width = 78, Height = 30 };
+            translateToSpanishButton = new Button { Text = TranslateToSpanishText, Width = 78, Height = 30 };
+            translateToItalianButton = new Button { Text = TranslateToItalianText, Width = 78, Height = 30 };
+            translateToRussianButton = new Button { Text = TranslateToRussianText, Width = 78, Height = 30 };
             translationProviderBox = new ComboBox { Width = 90, Height = 30, DropDownStyle = ComboBoxStyle.DropDownList };
             translationProviderBox.Items.Add("Google");
             translationProviderBox.Items.Add("Baidu");
@@ -2114,6 +2138,10 @@ namespace ScreenshotHotkeyTool
             toolbar.Controls.Add(translateToEnglishButton);
             toolbar.Controls.Add(translateToChineseButton);
             toolbar.Controls.Add(translateToGermanButton);
+            toolbar.Controls.Add(translateToFrenchButton);
+            toolbar.Controls.Add(translateToSpanishButton);
+            toolbar.Controls.Add(translateToItalianButton);
+            toolbar.Controls.Add(translateToRussianButton);
             toolbar.Controls.Add(translationProviderBox);
             toolbar.Controls.Add(translationProviderLabel);
             Controls.Add(resultBox);
@@ -2150,6 +2178,10 @@ namespace ScreenshotHotkeyTool
             translateToEnglishButton.Click += delegate { TranslateCurrentText("en", translateToEnglishButton, translateToChineseButton); };
             translateToChineseButton.Click += delegate { TranslateCurrentText("zh-CN", translateToChineseButton, translateToEnglishButton); };
             translateToGermanButton.Click += delegate { TranslateCurrentText("de", translateToGermanButton, translateToChineseButton, translateToEnglishButton); };
+            translateToFrenchButton.Click += delegate { TranslateCurrentText("fr", translateToFrenchButton, translateToChineseButton, translateToEnglishButton, translateToGermanButton); };
+            translateToSpanishButton.Click += delegate { TranslateCurrentText("es", translateToSpanishButton, translateToChineseButton, translateToEnglishButton, translateToGermanButton); };
+            translateToItalianButton.Click += delegate { TranslateCurrentText("it", translateToItalianButton, translateToChineseButton, translateToEnglishButton, translateToGermanButton); };
+            translateToRussianButton.Click += delegate { TranslateCurrentText("ru", translateToRussianButton, translateToChineseButton, translateToEnglishButton, translateToGermanButton); };
             translationProviderBox.SelectedIndexChanged += delegate
             {
                 if (translationProviderBox.SelectedItem == null)
@@ -2255,6 +2287,10 @@ namespace ScreenshotHotkeyTool
             translateToEnglishButton.Text = TranslateToEnglishText;
             translateToChineseButton.Text = TranslateToChineseText;
             translateToGermanButton.Text = TranslateToGermanText;
+            translateToFrenchButton.Text = TranslateToFrenchText;
+            translateToSpanishButton.Text = TranslateToSpanishText;
+            translateToItalianButton.Text = TranslateToItalianText;
+            translateToRussianButton.Text = TranslateToRussianText;
             if (restoreButton != null)
                 restoreButton.Text = RestoreOriginalTextLabel;
         }
@@ -2279,6 +2315,14 @@ namespace ScreenshotHotkeyTool
                 return "英文";
             if (targetLanguage == "de")
                 return "德文";
+            if (targetLanguage == "fr")
+                return "法语";
+            if (targetLanguage == "es")
+                return "西班牙语";
+            if (targetLanguage == "it")
+                return "意大利语";
+            if (targetLanguage == "ru")
+                return "俄语";
             return "中文";
         }
 
@@ -2360,7 +2404,7 @@ namespace ScreenshotHotkeyTool
             if (settings == null || string.IsNullOrWhiteSpace(settings.BaiduAppId) || string.IsNullOrWhiteSpace(settings.BaiduSecretKey))
                 throw new InvalidOperationException("请先在设置里填写百度翻译 App ID 和密钥。");
 
-            var to = targetLanguage == "en" ? "en" : (targetLanguage == "de" ? "de" : "zh");
+            var to = BaiduTargetLanguage(targetLanguage);
             var salt = DateTime.UtcNow.Ticks.ToString();
             var sign = Md5(settings.BaiduAppId + text + salt + settings.BaiduSecretKey);
             var body = "q=" + Uri.EscapeDataString(text)
@@ -2377,6 +2421,23 @@ namespace ScreenshotHotkeyTool
                 var json = client.UploadString("https://fanyi-api.baidu.com/api/trans/vip/translate", body);
                 return ParseBaiduTranslateResult(json);
             }
+        }
+
+        private static string BaiduTargetLanguage(string targetLanguage)
+        {
+            if (targetLanguage == "en")
+                return "en";
+            if (targetLanguage == "de")
+                return "de";
+            if (targetLanguage == "fr")
+                return "fra";
+            if (targetLanguage == "es")
+                return "spa";
+            if (targetLanguage == "it")
+                return "it";
+            if (targetLanguage == "ru")
+                return "ru";
+            return "zh";
         }
 
         private static IEnumerable<string> BuildTranslateUrls(string text, string targetLanguage)

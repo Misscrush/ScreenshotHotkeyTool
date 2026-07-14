@@ -178,6 +178,13 @@ if ($source -notmatch 'TranslateInlineOcrText\("zh-CN", translateButton\)' -or
     throw 'Inline OCR translate dropdown should include Chinese, English, and German.'
 }
 
+if ($source -notmatch 'TranslateInlineOcrText\("fr", translateButton\)' -or
+    $source -notmatch 'TranslateInlineOcrText\("es", translateButton\)' -or
+    $source -notmatch 'TranslateInlineOcrText\("it", translateButton\)' -or
+    $source -notmatch 'TranslateInlineOcrText\("ru", translateButton\)') {
+    throw 'Inline OCR translate dropdown should include French, Spanish, Italian, and Russian.'
+}
+
 if ($source -notmatch 'WordWrap = true') {
     throw 'Inline OCR result text should wrap automatically based on the current box width.'
 }
