@@ -21,9 +21,15 @@ namespace ScreenshotHotkeyTool
         private static Mutex singleInstanceMutex;
 
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
             DpiAwareness.Enable();
+
+            if (args != null && args.Length >= 2 && string.Equals(args[0], "--test-scroll-capture", StringComparison.OrdinalIgnoreCase))
+            {
+                RunScrollCaptureTest(args[1]);
+                return;
+            }
 
             bool createdNew;
             singleInstanceMutex = new Mutex(true, "ScreenshotHotkeyTool.SingleInstance", out createdNew);
@@ -35,6 +41,23 @@ namespace ScreenshotHotkeyTool
             Application.Run(new TrayAppContext());
             singleInstanceMutex.ReleaseMutex();
             singleInstanceMutex.Dispose();
+        }
+
+        private static void RunScrollCaptureTest(string outputPath)
+        {
+            var region = Screen.FromPoint(Cursor.Position).WorkingArea;
+            ScrollingCaptureRunner.DebugFrameDirectory = outputPath + ".frames";
+            using (var bitmap = ScrollingCaptureRunner.Capture(region))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
+                bitmap.Save(outputPath, ImageFormat.Png);
+                var report = "Saved=" + outputPath + Environment.NewLine
+                    + "Frames=" + ScrollingCaptureRunner.LastCaptureCount + Environment.NewLine
+                    + "Size=" + bitmap.Width + "x" + bitmap.Height + Environment.NewLine
+                    + "Stitch=" + ScrollingCaptureRunner.LastStitchSummary + Environment.NewLine;
+                File.WriteAllText(outputPath + ".txt", report, Encoding.UTF8);
+                Console.Write(report);
+            }
         }
     }
 
@@ -73,6 +96,7 @@ namespace ScreenshotHotkeyTool
         private readonly HotkeyWindow ocrHotkeyWindow;
         private readonly NotifyIcon trayIcon;
         private readonly Icon trayAppIcon;
+        private readonly Control uiInvoker;
         private HotkeySettings settings;
         private bool isCapturing;
 
@@ -81,6 +105,8 @@ namespace ScreenshotHotkeyTool
             settings = HotkeySettings.Load();
             screenshotHotkeyWindow = new HotkeyWindow(7301, TriggerSnip);
             ocrHotkeyWindow = new HotkeyWindow(7302, TriggerOcr);
+            uiInvoker = new Control();
+            uiInvoker.CreateControl();
 
             if (!screenshotHotkeyWindow.Register(settings.Modifiers, settings.KeyCode))
             {
@@ -93,6 +119,7 @@ namespace ScreenshotHotkeyTool
 
             var menu = new ContextMenuStrip();
             menu.Items.Add("立即截图", null, delegate { TriggerSnip(); });
+            menu.Items.Add("滚动截屏", null, delegate { TriggerScrollingSnip(); });
             menu.Items.Add("识别文字", null, delegate { TriggerOcr(); });
             menu.Items.Add("设置", null, delegate { OpenSettings(); });
             menu.Items.Add("退出", null, delegate { ExitThread(); });
@@ -159,6 +186,11 @@ namespace ScreenshotHotkeyTool
             StartScreenshotEditorSelection(false);
         }
 
+        private void TriggerScrollingSnip()
+        {
+            StartFullScreenScrollingCapture();
+        }
+
         private void TriggerOcr()
         {
             if (!settings.OcrEnabled)
@@ -205,6 +237,93 @@ namespace ScreenshotHotkeyTool
                 throw;
             }
             finally
+            {
+            }
+        }
+
+        private void StartFullScreenScrollingCapture()
+        {
+            if (isCapturing)
+                return;
+
+            isCapturing = true;
+            File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "last-trigger.txt"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+
+            try
+            {
+                CaptureScrollingRegion(GetFullScreenScrollingRegion());
+            }
+            catch
+            {
+                isCapturing = false;
+                throw;
+            }
+        }
+
+        private static Rectangle GetFullScreenScrollingRegion()
+        {
+            return Screen.FromPoint(Cursor.Position).WorkingArea;
+        }
+
+        private void CaptureScrollingRegion(Rectangle region)
+        {
+            AppendScrollingCaptureLog("selected " + region);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                Bitmap captured = null;
+                Exception error = null;
+                try
+                {
+                    var captureRegion = ScrollingCaptureRunner.ExpandScrollingRegionToWindowBottom(region, SystemInformation.VirtualScreen);
+                    AppendScrollingCaptureLog("expanded scrolling region " + region + " -> " + captureRegion);
+                    AppendScrollingCaptureLog("capture started");
+                    captured = ScrollingCaptureRunner.Capture(captureRegion);
+                    AppendScrollingCaptureLog("capture finished frames=" + ScrollingCaptureRunner.LastCaptureCount + " output=" + captured.Width + "x" + captured.Height + " stitch=" + ScrollingCaptureRunner.LastStitchSummary);
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                    AppendScrollingCaptureLog("capture failed " + ex);
+                }
+
+                uiInvoker.BeginInvoke((MethodInvoker)delegate
+                {
+                    AppendScrollingCaptureLog("ui callback");
+                    isCapturing = false;
+                    if (error != null)
+                    {
+                        if (captured != null)
+                            captured.Dispose();
+                        MessageBox.Show("滚动截屏失败：" + Environment.NewLine + error.Message, "截图快捷键", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    if (captured == null)
+                        return;
+
+                    var preview = new PreviewForm(captured, SaveBitmap, RecognizeText, settings, true);
+                    preview.Text = "滚动截屏预览";
+                    preview.Show();
+                    preview.WindowState = FormWindowState.Normal;
+                    preview.TopMost = true;
+                    preview.BringToFront();
+                    preview.Activate();
+                    preview.TopMost = false;
+                    AppendScrollingCaptureLog("preview shown");
+                });
+            });
+        }
+
+        private static void AppendScrollingCaptureLog(string message)
+        {
+            try
+            {
+                File.AppendAllText(
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scrolling-capture.log"),
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " " + message + Environment.NewLine,
+                    Encoding.UTF8);
+            }
+            catch
             {
             }
         }
@@ -310,6 +429,8 @@ namespace ScreenshotHotkeyTool
             }
             if (trayAppIcon != null)
                 trayAppIcon.Dispose();
+            if (uiInvoker != null)
+                uiInvoker.Dispose();
             if (screenshotHotkeyWindow != null)
                 screenshotHotkeyWindow.Dispose();
             if (ocrHotkeyWindow != null)
@@ -323,6 +444,7 @@ namespace ScreenshotHotkeyTool
         private readonly Rectangle virtualBounds;
         private readonly Bitmap screenshot;
         private readonly Action<Bitmap> onCaptured;
+        private readonly Action<Rectangle> onRegionCaptured;
         private readonly Func<Bitmap, string> saveImage;
         private readonly Func<Bitmap, string> recognizeText;
         private readonly HotkeySettings settings;
@@ -373,16 +495,27 @@ namespace ScreenshotHotkeyTool
         {
         }
 
+        public SelectionOverlayForm(Rectangle virtualBounds, Bitmap screenshot, Action<Rectangle> onRegionCaptured)
+            : this(virtualBounds, screenshot, null, onRegionCaptured, null, null, null, false, false)
+        {
+        }
+
         public SelectionOverlayForm(Rectangle virtualBounds, Bitmap screenshot, Func<Bitmap, string> saveImage, Func<Bitmap, string> recognizeText, HotkeySettings settings, bool recognizeImmediately)
             : this(virtualBounds, screenshot, null, saveImage, recognizeText, settings, true, recognizeImmediately)
         {
         }
 
         private SelectionOverlayForm(Rectangle virtualBounds, Bitmap screenshot, Action<Bitmap> onCaptured, Func<Bitmap, string> saveImage, Func<Bitmap, string> recognizeText, HotkeySettings settings, bool inlineEditingMode, bool recognizeImmediately)
+            : this(virtualBounds, screenshot, onCaptured, null, saveImage, recognizeText, settings, inlineEditingMode, recognizeImmediately)
+        {
+        }
+
+        private SelectionOverlayForm(Rectangle virtualBounds, Bitmap screenshot, Action<Bitmap> onCaptured, Action<Rectangle> onRegionCaptured, Func<Bitmap, string> saveImage, Func<Bitmap, string> recognizeText, HotkeySettings settings, bool inlineEditingMode, bool recognizeImmediately)
         {
             this.virtualBounds = virtualBounds;
             this.screenshot = screenshot;
             this.onCaptured = onCaptured;
+            this.onRegionCaptured = onRegionCaptured;
             this.saveImage = saveImage;
             this.recognizeText = recognizeText;
             this.settings = settings ?? HotkeySettings.Default();
@@ -572,6 +705,17 @@ namespace ScreenshotHotkeyTool
             }
 
             Hide();
+            if (onRegionCaptured != null)
+            {
+                onRegionCaptured(new Rectangle(
+                    virtualBounds.Left + selection.Left,
+                    virtualBounds.Top + selection.Top,
+                    selection.Width,
+                    selection.Height));
+                Close();
+                return;
+            }
+
             using (var cropped = screenshot.Clone(selection, PixelFormat.Format32bppArgb))
             {
                 if (onCaptured != null)
@@ -766,10 +910,11 @@ namespace ScreenshotHotkeyTool
             var toolbar = CreateFloatingToolbar(48);
             var translateButton = CreateToolButton("\u7ffb\u8bd1", "\u9009\u62e9\u7ffb\u8bd1\u76ee\u6807");
             var formatButton = CreateToolButton("\u53bb\u683c\u5f0f", "\u53bb\u683c\u5f0f");
-            var copyButton = CreateToolButton("\u590d\u5236", "\u590d\u5236\u6587\u5b57");
+            var copyButton = CreateToolButton("\u9009\u62e9\u590d\u5236", "\u5f00\u542f\u6587\u5b57\u9009\u4e2d\uff0c\u53ef\u53f3\u952e\u590d\u5236\u9009\u4e2d\u6bb5\u843d");
             var saveTextButton = CreateToolButton("\u4fdd\u5b58", "\u4fdd\u5b58\u6587\u5b57");
             var closeButton = CreateToolButton("\u5173\u95ed", "\u5173\u95ed");
             translateButton.Width = 72;
+            copyButton.Width = 96;
 
             var translateMenu = new ContextMenuStrip();
             translateMenu.Items.Add("\u8f6c\u4e2d\u6587", null, delegate { TranslateInlineOcrText("zh-CN", translateButton); });
@@ -779,6 +924,7 @@ namespace ScreenshotHotkeyTool
             translateMenu.Items.Add("\u8f6c\u897f\u73ed\u7259\u8bed", null, delegate { TranslateInlineOcrText("es", translateButton); });
             translateMenu.Items.Add("\u8f6c\u610f\u5927\u5229\u8bed", null, delegate { TranslateInlineOcrText("it", translateButton); });
             translateMenu.Items.Add("\u8f6c\u4fc4\u8bed", null, delegate { TranslateInlineOcrText("ru", translateButton); });
+            translateMenu.Items.Add("\u8f6c\u8377\u5170\u8bed", null, delegate { TranslateInlineOcrText("nl", translateButton); });
 
             toolbar.Controls.Add(translateButton);
             toolbar.Controls.Add(formatButton);
@@ -819,8 +965,18 @@ namespace ScreenshotHotkeyTool
             };
             copyButton.Click += delegate
             {
-                if (inlineOcrBox != null && !string.IsNullOrEmpty(inlineOcrBox.Text))
-                    Clipboard.SetText(inlineOcrBox.Text);
+                if (inlineOcrBox == null)
+                    return;
+
+                inlineOcrBox.SelectionCopyMode = !inlineOcrBox.SelectionCopyMode;
+                movingInlineOcrBox = false;
+                resizingInlineOcrBox = false;
+                copyButton.Text = inlineOcrBox.SelectionCopyMode ? "\u9000\u51fa\u9009\u62e9" : "\u9009\u62e9\u590d\u5236";
+                toolTip.SetToolTip(
+                    copyButton,
+                    inlineOcrBox.SelectionCopyMode
+                        ? "\u5df2\u53ef\u9009\u4e2d\u6587\u5b57\uff1b\u9009\u4e2d\u540e\u53f3\u952e\u590d\u5236\uff0c\u518d\u70b9\u4e00\u6b21\u6062\u590d\u62d6\u52a8"
+                        : "\u5f00\u542f\u6587\u5b57\u9009\u4e2d\uff0c\u53ef\u53f3\u952e\u590d\u5236\u9009\u4e2d\u6bb5\u843d");
             };
             saveTextButton.Click += delegate { SaveInlineOcrText(); };
             closeButton.Click += delegate { Close(); };
@@ -1266,6 +1422,7 @@ namespace ScreenshotHotkeyTool
                 Text = string.IsNullOrWhiteSpace(inlineOcrFormattedText) ? "未识别到文字" : inlineOcrFormattedText,
                 BackColor = Color.White,
                 ForeColor = Color.Black,
+                SelectionCopyMode = false,
                 Cursor = Cursors.SizeAll,
                 Visible = true
             };
@@ -1507,6 +1664,8 @@ namespace ScreenshotHotkeyTool
                 return "\u8f6c\u610f";
             if (targetLanguage == "ru")
                 return "\u8f6c\u4fc4";
+            if (targetLanguage == "nl")
+                return "\u8f6c\u8377";
             return "\u8f6c\u4e2d";
         }
 
@@ -1537,6 +1696,8 @@ namespace ScreenshotHotkeyTool
         {
             if (e.Button != MouseButtons.Left || inlineOcrBox == null)
                 return;
+            if (sender == inlineOcrBox && inlineOcrBox.SelectionCopyMode)
+                return;
 
             var edges = GetInlineOcrResizeEdges(sender, e.Location);
             if (!edges)
@@ -1554,6 +1715,9 @@ namespace ScreenshotHotkeyTool
 
         private void ResizeInlineOcrBox(object sender, MouseEventArgs e)
         {
+            if (sender == inlineOcrBox && inlineOcrBox != null && inlineOcrBox.SelectionCopyMode)
+                return;
+
             if (!resizingInlineOcrBox && inlineOcrBox != null)
             {
                 if (movingInlineOcrBox)
@@ -1602,6 +1766,9 @@ namespace ScreenshotHotkeyTool
 
         private void EndResizeInlineOcrBox(object sender, MouseEventArgs e)
         {
+            if (sender == inlineOcrBox && inlineOcrBox != null && inlineOcrBox.SelectionCopyMode)
+                return;
+
             if (!resizingInlineOcrBox)
             {
                 if (movingInlineOcrBox)
@@ -1648,7 +1815,7 @@ namespace ScreenshotHotkeyTool
             movingInlineOcrBox = false;
             Cursor = Cursors.Default;
             if (inlineOcrBox != null)
-                inlineOcrBox.Cursor = Cursors.SizeAll;
+                inlineOcrBox.Cursor = inlineOcrBox.SelectionCopyMode ? Cursors.IBeam : Cursors.SizeAll;
         }
 
         private bool GetInlineOcrResizeEdges(object sender, Point location)
@@ -1799,6 +1966,11 @@ namespace ScreenshotHotkeyTool
         private readonly ImageCanvasControl canvas;
         private readonly Bitmap originalImage;
         private readonly HotkeySettings settings;
+        private readonly bool fitWidthScrollPreview;
+        private readonly Panel scrollPanel;
+        private double scrollPreviewFitScale = 1.0;
+        private double scrollPreviewZoom = 1.0;
+        private bool previewDisposing;
         private readonly Button drawButton;
         private readonly Button rectangleButton;
         private readonly Button textButton;
@@ -1806,10 +1978,16 @@ namespace ScreenshotHotkeyTool
         private readonly Label statusLabel;
 
         public PreviewForm(Bitmap image, Func<Bitmap, string> saveImage, Func<Bitmap, string> recognizeText, HotkeySettings settings)
+            : this(image, saveImage, recognizeText, settings, false)
+        {
+        }
+
+        public PreviewForm(Bitmap image, Func<Bitmap, string> saveImage, Func<Bitmap, string> recognizeText, HotkeySettings settings, bool fitWidthScrollPreview)
         {
             this.saveImage = saveImage;
             this.recognizeText = recognizeText;
             this.settings = settings ?? HotkeySettings.Default();
+            this.fitWidthScrollPreview = fitWidthScrollPreview;
             originalImage = (Bitmap)image.Clone();
 
             Text = "截图预览";
@@ -1853,7 +2031,7 @@ namespace ScreenshotHotkeyTool
 
             canvas = new ImageCanvasControl(image)
             {
-                Dock = DockStyle.Fill
+                Dock = fitWidthScrollPreview ? DockStyle.None : DockStyle.Fill
             };
 
             statusLabel = new Label
@@ -1866,9 +2044,29 @@ namespace ScreenshotHotkeyTool
                 Text = "未框选时识别整张截图；框选后识别最后一个框选区域"
             };
 
-            Controls.Add(canvas);
+            if (fitWidthScrollPreview)
+            {
+                scrollPanel = new Panel
+                {
+                    Dock = DockStyle.Fill,
+                    AutoScroll = true,
+                    BackColor = Color.FromArgb(34, 34, 34)
+                };
+                scrollPanel.Controls.Add(canvas);
+                scrollPanel.Resize += HandleScrollPreviewResize;
+                scrollPanel.MouseWheel += HandleScrollPreviewMouseWheel;
+                canvas.MouseWheel += HandleScrollPreviewMouseWheel;
+                canvas.MouseEnter += delegate { canvas.Focus(); };
+                Controls.Add(scrollPanel);
+            }
+            else
+            {
+                Controls.Add(canvas);
+            }
             Controls.Add(statusLabel);
             Controls.Add(toolbar);
+            if (fitWidthScrollPreview)
+                LayoutFitWidthCanvas();
 
             copyButton.Click += delegate
             {
@@ -1930,6 +2128,60 @@ namespace ScreenshotHotkeyTool
             closeButton.Click += delegate { Close(); };
         }
 
+        private void LayoutFitWidthCanvas()
+        {
+            if (previewDisposing || !fitWidthScrollPreview || scrollPanel == null || canvas == null || canvas.IsDisposed || !canvas.ImageIsUsable)
+                return;
+
+            var availableWidth = Math.Max(120, scrollPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4);
+            scrollPreviewFitScale = Math.Min(1.0, availableWidth / (double)canvas.Image.Width);
+            ApplyScrollPreviewZoom();
+        }
+
+        private void HandleScrollPreviewResize(object sender, EventArgs e)
+        {
+            LayoutFitWidthCanvas();
+        }
+
+        private double PreviewZoom
+        {
+            get { return scrollPreviewZoom; }
+        }
+
+        private void HandleScrollPreviewMouseWheel(object sender, MouseEventArgs e)
+        {
+            if (!fitWidthScrollPreview || (ModifierKeys & Keys.Control) != Keys.Control)
+                return;
+
+            scrollPreviewZoom = ClampZoom(scrollPreviewZoom * (e.Delta > 0 ? 1.15 : 1.0 / 1.15));
+            ApplyScrollPreviewZoom();
+            var handled = e as HandledMouseEventArgs;
+            if (handled != null)
+                handled.Handled = true;
+        }
+
+        private void ApplyScrollPreviewZoom()
+        {
+            if (previewDisposing || !fitWidthScrollPreview || scrollPanel == null || canvas == null || canvas.IsDisposed || !canvas.ImageIsUsable)
+                return;
+
+            var scale = Math.Max(0.05, scrollPreviewFitScale * scrollPreviewZoom);
+            var displayWidth = Math.Max(1, (int)Math.Round(canvas.Image.Width * scale));
+            var displayHeight = Math.Max(1, (int)Math.Round(canvas.Image.Height * scale));
+            canvas.Location = new Point(0, 0);
+            canvas.Size = new Size(displayWidth, displayHeight);
+            canvas.Invalidate();
+        }
+
+        private static double ClampZoom(double value)
+        {
+            if (value < 0.25)
+                return 0.25;
+            if (value > 5.0)
+                return 5.0;
+            return value;
+        }
+
         private void UpdateToolButtons()
         {
             drawButton.Text = canvas.Mode == AnnotationMode.Freehand ? "停止画图" : "画图";
@@ -1989,6 +2241,14 @@ namespace ScreenshotHotkeyTool
         {
             if (disposing)
             {
+                previewDisposing = true;
+                if (scrollPanel != null)
+                {
+                    scrollPanel.Resize -= HandleScrollPreviewResize;
+                    scrollPanel.MouseWheel -= HandleScrollPreviewMouseWheel;
+                }
+                if (canvas != null)
+                    canvas.MouseWheel -= HandleScrollPreviewMouseWheel;
                 originalImage.Dispose();
                 canvas.Dispose();
             }
@@ -2044,6 +2304,7 @@ namespace ScreenshotHotkeyTool
         private readonly Button translateToSpanishButton;
         private readonly Button translateToItalianButton;
         private readonly Button translateToRussianButton;
+        private readonly Button translateToDutchButton;
         private const string TranslateToEnglishText = "转英文";
         private const string TranslateToChineseText = "转中文";
         private const string RestoreOriginalTextLabel = "复原原文";
@@ -2052,6 +2313,7 @@ namespace ScreenshotHotkeyTool
         private const string TranslateToSpanishText = "转西语";
         private const string TranslateToItalianText = "转意语";
         private const string TranslateToRussianText = "转俄语";
+        private const string TranslateToDutchText = "转荷语";
         private string textBeforeTranslation;
         private bool formatRemoved;
         private bool formatRemovedBeforeTranslation;
@@ -2103,6 +2365,7 @@ namespace ScreenshotHotkeyTool
             translateToSpanishButton = new Button { Text = TranslateToSpanishText, Width = 78, Height = 30 };
             translateToItalianButton = new Button { Text = TranslateToItalianText, Width = 78, Height = 30 };
             translateToRussianButton = new Button { Text = TranslateToRussianText, Width = 78, Height = 30 };
+            translateToDutchButton = new Button { Text = TranslateToDutchText, Width = 78, Height = 30 };
             translationProviderBox = new ComboBox { Width = 90, Height = 30, DropDownStyle = ComboBoxStyle.DropDownList };
             translationProviderBox.Items.Add("Google");
             translationProviderBox.Items.Add("Baidu");
@@ -2142,6 +2405,7 @@ namespace ScreenshotHotkeyTool
             toolbar.Controls.Add(translateToSpanishButton);
             toolbar.Controls.Add(translateToItalianButton);
             toolbar.Controls.Add(translateToRussianButton);
+            toolbar.Controls.Add(translateToDutchButton);
             toolbar.Controls.Add(translationProviderBox);
             toolbar.Controls.Add(translationProviderLabel);
             Controls.Add(resultBox);
@@ -2182,6 +2446,7 @@ namespace ScreenshotHotkeyTool
             translateToSpanishButton.Click += delegate { TranslateCurrentText("es", translateToSpanishButton, translateToChineseButton, translateToEnglishButton, translateToGermanButton); };
             translateToItalianButton.Click += delegate { TranslateCurrentText("it", translateToItalianButton, translateToChineseButton, translateToEnglishButton, translateToGermanButton); };
             translateToRussianButton.Click += delegate { TranslateCurrentText("ru", translateToRussianButton, translateToChineseButton, translateToEnglishButton, translateToGermanButton); };
+            translateToDutchButton.Click += delegate { TranslateCurrentText("nl", translateToDutchButton, translateToChineseButton, translateToEnglishButton, translateToGermanButton); };
             translationProviderBox.SelectedIndexChanged += delegate
             {
                 if (translationProviderBox.SelectedItem == null)
@@ -2291,6 +2556,7 @@ namespace ScreenshotHotkeyTool
             translateToSpanishButton.Text = TranslateToSpanishText;
             translateToItalianButton.Text = TranslateToItalianText;
             translateToRussianButton.Text = TranslateToRussianText;
+            translateToDutchButton.Text = TranslateToDutchText;
             if (restoreButton != null)
                 restoreButton.Text = RestoreOriginalTextLabel;
         }
@@ -2323,6 +2589,8 @@ namespace ScreenshotHotkeyTool
                 return "意大利语";
             if (targetLanguage == "ru")
                 return "俄语";
+            if (targetLanguage == "nl")
+                return "荷兰语";
             return "中文";
         }
 
@@ -2332,6 +2600,579 @@ namespace ScreenshotHotkeyTool
                 return string.Empty;
 
             return Regex.Replace(text, @"\s+", " ").Trim();
+        }
+    }
+
+    internal static class ScrollingCaptureRunner
+    {
+        private const int MaxCaptures = 24;
+        private const int SeamTrimPixels = 3;
+        private const int MinimumAppendedFrameHeight = 36;
+        private const int MinimumContinuedScrollAppendHeight = 180;
+        public static int LastCaptureCount { get; private set; }
+        public static string LastStitchSummary { get; private set; }
+        public static string DebugFrameDirectory { get; set; }
+
+        public static Rectangle ExpandScrollingRegionToWindowBottom(Rectangle region, Rectangle virtualBounds)
+        {
+            if (region.Width < 1 || region.Height < 1)
+                return region;
+
+            var hwnd = WindowFromPoint(new NativePoint
+            {
+                X = region.Left + region.Width / 2,
+                Y = region.Top + region.Height / 2
+            });
+            if (hwnd == IntPtr.Zero)
+                return region;
+
+            var root = GetAncestor(hwnd, GA_ROOT);
+            if (root != IntPtr.Zero)
+                hwnd = root;
+
+            NativeRect windowRect;
+            if (!GetWindowRect(hwnd, out windowRect))
+                return region;
+
+            var windowBottom = Clamp(windowRect.Bottom - 8, region.Bottom, virtualBounds.Bottom);
+            if (windowBottom <= region.Bottom)
+                return region;
+
+            return new Rectangle(region.Left, region.Top, region.Width, windowBottom - region.Top);
+        }
+
+        public static Bitmap Capture(Rectangle region)
+        {
+            if (region.Width < 10 || region.Height < 10)
+                throw new InvalidOperationException("滚动截屏区域太小。");
+
+            ActivateWindowAtRegion(region);
+            WaitForMouseButtonsReleased();
+            Thread.Sleep(500);
+            var captures = new List<Bitmap>();
+            try
+            {
+                LastCaptureCount = 0;
+                Bitmap previous = null;
+                for (var i = 0; i < MaxCaptures; i++)
+                {
+                    if (i > 0 && UserRequestedStop())
+                        break;
+
+                    var current = CaptureRegion(region);
+                    if (previous != null && ImagesAreNearlySame(previous, current))
+                    {
+                        current.Dispose();
+                        RetryScrollRegion(region);
+                        if (!WaitForScrollSettleOrUserStop())
+                            break;
+                        current = CaptureRegion(region);
+                        if (ImagesAreNearlySame(previous, current))
+                        {
+                            current.Dispose();
+                            break;
+                        }
+                    }
+
+                    captures.Add(current);
+                    SaveDebugFrame(current, captures.Count);
+                    previous = current;
+                    LastCaptureCount = captures.Count;
+                    if (i == MaxCaptures - 1)
+                        break;
+
+                    ScrollRegion(region);
+                    if (!WaitForScrollSettleOrUserStop())
+                        break;
+                }
+
+                if (captures.Count == 0)
+                    throw new InvalidOperationException("没有捕获到可用画面。");
+                if (captures.Count == 1)
+                    throw new InvalidOperationException("页面没有发生滚动，只捕获到当前框选区域。请先点一下要滚动的网页/文档内容，再用滚动截屏。");
+
+                var scrollingContentBounds = DetectScrollingContentBounds(captures);
+                return Stitch(captures, scrollingContentBounds);
+            }
+            finally
+            {
+                foreach (var capture in captures)
+                    capture.Dispose();
+            }
+        }
+
+        private static Bitmap CaptureRegion(Rectangle region)
+        {
+            var bitmap = new Bitmap(region.Width, region.Height, PixelFormat.Format32bppArgb);
+            using (var graphics = Graphics.FromImage(bitmap))
+            {
+                graphics.CopyFromScreen(region.Left, region.Top, 0, 0, region.Size, CopyPixelOperation.SourceCopy);
+            }
+            return bitmap;
+        }
+
+        private static void SaveDebugFrame(Bitmap frame, int index)
+        {
+            if (string.IsNullOrWhiteSpace(DebugFrameDirectory))
+                return;
+
+            Directory.CreateDirectory(DebugFrameDirectory);
+            frame.Save(Path.Combine(DebugFrameDirectory, "frame-" + index.ToString("00") + ".png"), ImageFormat.Png);
+        }
+
+        private static void ScrollRegion(Rectangle region)
+        {
+            SetCursorPos(region.Left + region.Width / 2, region.Top + region.Height / 2);
+            for (var i = 0; i < 2; i++)
+            {
+                SendMouseWheel(-120);
+                Thread.Sleep(30);
+            }
+        }
+
+        private static void RetryScrollRegion(Rectangle region)
+        {
+            SetCursorPos(region.Left + region.Width / 2, region.Top + region.Height / 2);
+            for (var i = 0; i < 8; i++)
+            {
+                SendMouseWheel(-120);
+                Thread.Sleep(25);
+            }
+        }
+
+        private static bool WaitForScrollSettleOrUserStop()
+        {
+            var waited = 0;
+            while (waited < 900)
+            {
+                Thread.Sleep(50);
+                waited += 50;
+                if (UserRequestedStop())
+                    return false;
+            }
+            return true;
+        }
+
+        private static void WaitForMouseButtonsReleased()
+        {
+            var waited = 0;
+            while (waited < 2000 && IsAnyMouseButtonDown())
+            {
+                Thread.Sleep(40);
+                waited += 40;
+            }
+        }
+
+        private static bool UserRequestedStop()
+        {
+            return IsAnyMouseButtonDown();
+        }
+
+        private static bool IsAnyMouseButtonDown()
+        {
+            return IsVirtualKeyDown(VK_LBUTTON) || IsVirtualKeyDown(VK_RBUTTON) || IsVirtualKeyDown(VK_MBUTTON);
+        }
+
+        private static bool IsVirtualKeyDown(int virtualKey)
+        {
+            return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+        }
+
+        private static void ActivateWindowAtRegion(Rectangle region)
+        {
+            var point = new Point(region.Left + region.Width / 2, region.Top + region.Height / 2);
+            SetCursorPos(point.X, point.Y);
+            var hwnd = WindowFromPoint(new NativePoint { X = point.X, Y = point.Y });
+            if (hwnd != IntPtr.Zero)
+                SetForegroundWindow(hwnd);
+        }
+
+        private static void SendMouseWheel(int delta)
+        {
+            var input = new INPUT();
+            input.type = INPUT_MOUSE;
+            input.mi.dwFlags = MOUSEEVENTF_WHEEL;
+            input.mi.mouseData = delta;
+            SendInput(1, new[] { input }, Marshal.SizeOf(typeof(INPUT)));
+        }
+
+        private static Bitmap Stitch(List<Bitmap> captures, Rectangle scrollingContentBounds)
+        {
+            var width = captures[0].Width;
+            var height = captures[0].Height;
+            LastStitchSummary = string.Empty;
+            scrollingContentBounds = NormalizeScrollingContentBounds(scrollingContentBounds, width, height);
+            var parts = new List<StitchFrame>();
+            parts.Add(new StitchFrame(0, 0, height));
+            var outputHeight = height;
+
+            for (var i = 1; i < captures.Count; i++)
+            {
+                var match = FindBestVerticalOverlap(captures[i - 1], captures[i], scrollingContentBounds);
+                var sourceTop = Clamp(match.CurrentTop + match.Overlap + SeamTrimPixels, 0, height - 1);
+                var sourceHeight = Math.Max(1, height - sourceTop);
+                var minimumSourceHeight = i < captures.Count - 1
+                    ? Math.Min(height / 2, Math.Max(height / 3, MinimumContinuedScrollAppendHeight))
+                    : MinimumAppendedFrameHeight;
+                if (sourceHeight < minimumSourceHeight)
+                {
+                    sourceTop = Clamp(height - minimumSourceHeight, 0, height - 1);
+                    sourceHeight = height - sourceTop;
+                }
+                parts.Add(new StitchFrame(i, sourceTop, sourceHeight));
+                outputHeight += sourceHeight;
+            }
+
+            LastStitchSummary = BuildStitchSummary(parts, scrollingContentBounds, outputHeight);
+
+            var output = new Bitmap(width, outputHeight, PixelFormat.Format32bppArgb);
+
+            using (var graphics = Graphics.FromImage(output))
+            {
+                graphics.Clear(Color.White);
+                var targetY = 0;
+                foreach (var part in parts)
+                {
+                    var seamY = targetY;
+                    if (part.CaptureIndex == 0)
+                        PreserveFixedAreasInFirstFrame(graphics, captures[part.CaptureIndex], part, width, targetY);
+                    else
+                        DrawMovingContentOnlyForAppendedFrames(graphics, captures[part.CaptureIndex], part, scrollingContentBounds, targetY);
+                    targetY += part.SourceHeight;
+                    if (seamY > 0)
+                        BlendStitchSeam(output, seamY, width);
+                }
+            }
+
+            return output;
+        }
+
+        private static void PreserveFixedAreasInFirstFrame(Graphics graphics, Bitmap source, StitchFrame part, int width, int targetY)
+        {
+            using (var slice = source.Clone(
+                new Rectangle(0, part.SourceTop, width, part.SourceHeight),
+                PixelFormat.Format32bppArgb))
+            {
+                graphics.DrawImageUnscaled(slice, 0, targetY);
+            }
+        }
+
+        private static void DrawMovingContentOnlyForAppendedFrames(Graphics graphics, Bitmap source, StitchFrame part, Rectangle scrollingContentBounds, int targetY)
+        {
+            var sourceRectangle = new Rectangle(
+                scrollingContentBounds.Left,
+                part.SourceTop,
+                scrollingContentBounds.Width,
+                part.SourceHeight);
+            using (var slice = source.Clone(sourceRectangle, PixelFormat.Format32bppArgb))
+            {
+                graphics.DrawImageUnscaled(slice, scrollingContentBounds.Left, targetY);
+            }
+        }
+
+        private static Rectangle NormalizeScrollingContentBounds(Rectangle bounds, int width, int height)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+                return new Rectangle(0, 0, width, height);
+
+            var left = Clamp(bounds.Left, 0, width - 1);
+            var top = Clamp(bounds.Top, 0, height - 1);
+            var right = Clamp(bounds.Right, left + 1, width);
+            var bottom = Clamp(bounds.Bottom, top + 1, height);
+            return new Rectangle(left, top, right - left, bottom - top);
+        }
+
+        private static string BuildStitchSummary(List<StitchFrame> parts, Rectangle scrollingContentBounds, int outputHeight)
+        {
+            var heights = new List<string>();
+            foreach (var part in parts)
+                heights.Add(part.CaptureIndex + ":" + part.SourceHeight);
+            return "content=" + scrollingContentBounds + " outputHeight=" + outputHeight + " parts=[" + string.Join(",", heights.ToArray()) + "]";
+        }
+
+        private static void BlendStitchSeam(Bitmap image, int seamY, int width)
+        {
+            const int band = 3;
+            var topReference = seamY - band - 1;
+            var bottomReference = seamY + band + 1;
+            if (topReference < 0 || bottomReference >= image.Height)
+                return;
+
+            for (var y = seamY - band; y <= seamY + band; y++)
+            {
+                if (y < 0 || y >= image.Height)
+                    continue;
+
+                var weight = (y - (seamY - band) + 1) / (double)(band * 2 + 2);
+                for (var x = 0; x < width && x < image.Width; x++)
+                {
+                    var top = image.GetPixel(x, topReference);
+                    var bottom = image.GetPixel(x, bottomReference);
+                    image.SetPixel(x, y, Color.FromArgb(
+                        BlendChannel(top.R, bottom.R, weight),
+                        BlendChannel(top.G, bottom.G, weight),
+                        BlendChannel(top.B, bottom.B, weight)));
+                }
+            }
+        }
+
+        private static int BlendChannel(int first, int second, double weight)
+        {
+            return Clamp((int)Math.Round(first * (1.0 - weight) + second * weight), 0, 255);
+        }
+
+        private static Rectangle DetectScrollingContentBounds(List<Bitmap> captures)
+        {
+            if (captures == null || captures.Count < 2)
+                return Rectangle.Empty;
+
+            var previous = captures[0];
+            var current = captures[1];
+            var width = Math.Min(previous.Width, current.Width);
+            var height = Math.Min(previous.Height, current.Height);
+            if (width < 80 || height < 80)
+                return new Rectangle(0, 0, width, height);
+
+            const int blockWidth = 10;
+            var scores = new List<int>();
+            var maxScore = 0;
+            for (var x = 0; x < width; x += blockWidth)
+            {
+                var score = ColumnMotionScore(previous, current, x, Math.Min(width, x + blockWidth));
+                scores.Add(score);
+                maxScore = Math.Max(maxScore, score);
+            }
+
+            if (maxScore < 8)
+                return new Rectangle(0, 0, width, height);
+
+            var threshold = Math.Max(8, maxScore / 5);
+            var leftBlock = -1;
+            var rightBlock = -1;
+            for (var i = 0; i < scores.Count; i++)
+            {
+                if (scores[i] < threshold)
+                    continue;
+
+                if (leftBlock < 0)
+                    leftBlock = i;
+                rightBlock = i;
+            }
+
+            if (leftBlock < 0 || rightBlock < leftBlock)
+                return new Rectangle(0, 0, width, height);
+
+            var left = Math.Max(0, leftBlock * blockWidth - blockWidth);
+            var right = Math.Min(width, (rightBlock + 2) * blockWidth);
+            if (left < 40 && width - right < 40)
+                return new Rectangle(0, 0, width, height);
+            if (right - left < Math.Max(80, width / 4))
+                return new Rectangle(0, 0, width, height);
+
+            return new Rectangle(left, 0, right - left, height);
+        }
+
+        private static int ColumnMotionScore(Bitmap previous, Bitmap current, int left, int right)
+        {
+            long total = 0;
+            var samples = 0;
+            var width = Math.Min(previous.Width, current.Width);
+            var height = Math.Min(previous.Height, current.Height);
+            var stepX = Math.Max(1, (right - left) / 2);
+            var stepY = Math.Max(1, height / 24);
+
+            for (var x = left; x < right && x < width; x += stepX)
+            {
+                for (var y = stepY; y < height; y += stepY)
+                {
+                    var a = previous.GetPixel(x, y);
+                    var b = current.GetPixel(x, y);
+                    total += Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B);
+                    samples++;
+                }
+            }
+
+            return samples == 0 ? 0 : (int)(total / samples);
+        }
+
+        private static OverlapMatch FindBestVerticalOverlap(Bitmap previous, Bitmap current, Rectangle contentBounds)
+        {
+            var height = Math.Min(previous.Height, current.Height);
+            var minOverlap = Math.Min(height - 1, Math.Max(80, height / 5));
+            var maxOverlap = Math.Max(minOverlap, height - 2);
+            var maxCurrentTop = Math.Min(180, Math.Max(0, height / 4));
+            var best = new OverlapMatch(0, minOverlap);
+            var bestScore = long.MaxValue;
+
+            for (var currentTop = 0; currentTop <= maxCurrentTop; currentTop += 8)
+            {
+                var candidateMaxOverlap = Math.Min(maxOverlap, height - currentTop - 1);
+                for (var overlap = minOverlap; overlap <= candidateMaxOverlap; overlap += 8)
+                {
+                    var score = OverlapScore(previous, current, contentBounds, currentTop, overlap)
+                        + currentTop * 2;
+                    if (score < bestScore)
+                    {
+                        bestScore = score;
+                        best = new OverlapMatch(currentTop, overlap);
+                    }
+                }
+            }
+
+            return best;
+        }
+
+        private static long OverlapScore(Bitmap previous, Bitmap current, Rectangle contentBounds, int currentTop, int overlap)
+        {
+            long total = 0;
+            var samples = 0;
+            var width = Math.Min(previous.Width, current.Width);
+            var left = Clamp(contentBounds.Left, 0, width - 1);
+            var right = Clamp(contentBounds.Right, left + 1, width);
+            var stepX = Math.Max(1, (right - left) / 14);
+            var stepY = Math.Max(1, overlap / 10);
+            var startPrevY = previous.Height - overlap;
+
+            for (var y = 0; y < overlap; y += stepY)
+            {
+                var previousY = startPrevY + y;
+                var currentY = currentTop + y;
+                for (var x = left + stepX / 2; x < right; x += stepX)
+                {
+                    var a = previous.GetPixel(x, previousY);
+                    var b = current.GetPixel(x, currentY);
+                    total += Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B);
+                    samples++;
+                }
+            }
+
+            return samples == 0 ? long.MaxValue : total / samples;
+        }
+
+        private struct StitchFrame
+        {
+            public readonly int CaptureIndex;
+            public readonly int SourceTop;
+            public readonly int SourceHeight;
+
+            public StitchFrame(int captureIndex, int sourceTop, int sourceHeight)
+            {
+                CaptureIndex = captureIndex;
+                SourceTop = sourceTop;
+                SourceHeight = sourceHeight;
+            }
+        }
+
+        private struct OverlapMatch
+        {
+            public readonly int CurrentTop;
+            public readonly int Overlap;
+
+            public OverlapMatch(int currentTop, int overlap)
+            {
+                CurrentTop = currentTop;
+                Overlap = overlap;
+            }
+        }
+
+        private static bool ImagesAreNearlySame(Bitmap first, Bitmap second)
+        {
+            if (first.Width != second.Width || first.Height != second.Height)
+                return false;
+
+            long totalDiff = 0;
+            var samples = 0;
+            var changedSamples = 0;
+            var stepX = Math.Max(1, first.Width / 16);
+            var stepY = Math.Max(1, first.Height / 16);
+            for (var y = stepY; y < first.Height; y += stepY)
+            {
+                for (var x = stepX; x < first.Width; x += stepX)
+                {
+                    var a = first.GetPixel(x, y);
+                    var b = second.GetPixel(x, y);
+                    var diff = Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B);
+                    totalDiff += diff;
+                    if (diff > 12)
+                        changedSamples++;
+                    samples++;
+                }
+            }
+
+            return samples > 0
+                && totalDiff / samples < 2
+                && changedSamples <= Math.Max(2, samples / 200);
+        }
+
+        private static int Clamp(int value, int min, int max)
+        {
+            if (value < min)
+                return min;
+            if (value > max)
+                return max;
+            return value;
+        }
+
+        private const int INPUT_MOUSE = 0;
+        private const int VK_LBUTTON = 0x01;
+        private const int VK_RBUTTON = 0x02;
+        private const int VK_MBUTTON = 0x04;
+        private const uint GA_ROOT = 2;
+        private const uint MOUSEEVENTF_WHEEL = 0x0800;
+
+        [DllImport("user32.dll")]
+        private static extern bool SetCursorPos(int x, int y);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr WindowFromPoint(NativePoint point);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct INPUT
+        {
+            public int type;
+            public MOUSEINPUT mi;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MOUSEINPUT
+        {
+            public int dx;
+            public int dy;
+            public int mouseData;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativePoint
+        {
+            public int X;
+            public int Y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativeRect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
         }
     }
 
@@ -2437,6 +3278,8 @@ namespace ScreenshotHotkeyTool
                 return "it";
             if (targetLanguage == "ru")
                 return "ru";
+            if (targetLanguage == "nl")
+                return "nl";
             return "zh";
         }
 
@@ -3001,77 +3844,74 @@ namespace ScreenshotHotkeyTool
         }
     }
 
-    internal sealed class InlineOcrTextControl : Control
+    internal sealed class InlineOcrTextControl : RichTextBox
     {
-        private const int TextPadding = 14;
-        private bool wordWrap = true;
+        private readonly ContextMenuStrip copyMenu;
+        private bool selectionCopyMode;
 
         public InlineOcrTextControl()
         {
-            DoubleBuffered = true;
             BackColor = Color.White;
             ForeColor = Color.Black;
+            ReadOnly = true;
+            DetectUrls = false;
+            HideSelection = false;
+            ShortcutsEnabled = true;
+            ScrollBars = RichTextBoxScrollBars.Both;
             Cursor = Cursors.SizeAll;
-            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            BorderStyle = BorderStyle.FixedSingle;
+
+            copyMenu = new ContextMenuStrip();
+            copyMenu.Items.Add("\u590d\u5236\u9009\u4e2d\u6587\u5b57", null, delegate
+            {
+                if (!string.IsNullOrEmpty(SelectedText))
+                    Clipboard.SetText(SelectedText);
+            });
+            copyMenu.Opening += delegate(object sender, System.ComponentModel.CancelEventArgs e)
+            {
+                e.Cancel = !selectionCopyMode || string.IsNullOrEmpty(SelectedText);
+            };
         }
 
-        public BorderStyle BorderStyle { get; set; }
-
-        public bool WordWrap
+        public bool SelectionCopyMode
         {
-            get { return wordWrap; }
+            get { return selectionCopyMode; }
             set
             {
-                wordWrap = value;
-                Invalidate();
+                selectionCopyMode = value;
+                Cursor = selectionCopyMode ? Cursors.IBeam : Cursors.SizeAll;
+                ContextMenuStrip = selectionCopyMode ? copyMenu : null;
+                if (!selectionCopyMode)
+                    Select(0, 0);
             }
         }
 
-        protected override void OnTextChanged(EventArgs e)
+        protected override void OnMouseDown(MouseEventArgs e)
         {
-            base.OnTextChanged(e);
-            Invalidate();
-        }
-
-        protected override void OnFontChanged(EventArgs e)
-        {
-            base.OnFontChanged(e);
-            Invalidate();
-        }
-
-        protected override void OnForeColorChanged(EventArgs e)
-        {
-            base.OnForeColorChanged(e);
-            Invalidate();
-        }
-
-        protected override void OnBackColorChanged(EventArgs e)
-        {
-            base.OnBackColorChanged(e);
-            Invalidate();
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            e.Graphics.Clear(BackColor);
-
-            var textBounds = new Rectangle(
-                TextPadding,
-                TextPadding,
-                Math.Max(1, ClientSize.Width - TextPadding * 2),
-                Math.Max(1, ClientSize.Height - TextPadding * 2));
-            var flags = TextFormatFlags.TextBoxControl | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping;
-            if (wordWrap)
-                flags |= TextFormatFlags.WordBreak;
-
-            var displayText = string.IsNullOrWhiteSpace(Text) ? "\u672a\u8bc6\u522b\u5230\u6587\u5b57" : Text;
-            TextRenderer.DrawText(e.Graphics, displayText, Font, textBounds, ForeColor, BackColor, flags);
-
-            using (var borderPen = new Pen(Color.Black, 2))
+            if (selectionCopyMode)
             {
-                e.Graphics.DrawRectangle(borderPen, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
+                base.OnMouseDown(e);
+                return;
             }
+
+            Select(0, 0);
+            base.OnMouseDown(e);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_SETCURSOR = 0x0020;
+            const int WM_CONTEXTMENU = 0x007B;
+
+            if (!selectionCopyMode && m.Msg == WM_CONTEXTMENU)
+            {
+                return;
+            }
+
+            base.WndProc(ref m);
+
+            if (!selectionCopyMode && m.Msg == WM_SETCURSOR)
+                Cursor.Current = Cursors.SizeAll;
         }
     }
 
@@ -3098,11 +3938,32 @@ namespace ScreenshotHotkeyTool
             StrokeWidth = 4;
             DoubleBuffered = true;
             BackColor = Color.FromArgb(34, 34, 34);
+            TabStop = true;
+            SetStyle(ControlStyles.Selectable, true);
         }
 
         public Bitmap Image
         {
             get { return image; }
+        }
+
+        public bool ImageIsUsable
+        {
+            get
+            {
+                if (image == null)
+                    return false;
+
+                try
+                {
+                    var unused = image.Width;
+                    return true;
+                }
+                catch (ArgumentException)
+                {
+                    return false;
+                }
+            }
         }
 
         public AnnotationMode Mode { get; set; }
@@ -3121,10 +3982,17 @@ namespace ScreenshotHotkeyTool
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+            if (!ImageIsUsable)
+                return;
+
             e.Graphics.Clear(BackColor);
             e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
             e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-            e.Graphics.DrawImage(image, ImageBounds);
+            var bounds = ImageBounds;
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+                return;
+
+            e.Graphics.DrawImage(image, bounds);
             DrawFloatingScreenshotBorder(e.Graphics);
 
             if (Mode == AnnotationMode.Arrow && isDrawing)

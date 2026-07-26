@@ -6,3 +6,9 @@ settings.json
 工具开发复盘.md
 *.log
 *.tmp
+test-output/
+*-smoke-*.png
+smoke-*.png
+clean-shot-*.png
+clean-ocr-*.png
+hit-current.png

@@ -15,7 +15,7 @@ if ($source -notmatch 'translateToGermanButton') {
     throw 'OCR result window should include a translate-to-German button.'
 }
 
-foreach ($buttonName in @('translateToFrenchButton', 'translateToSpanishButton', 'translateToItalianButton', 'translateToRussianButton')) {
+foreach ($buttonName in @('translateToFrenchButton', 'translateToSpanishButton', 'translateToItalianButton', 'translateToRussianButton', 'translateToDutchButton')) {
     if ($source -notmatch $buttonName) {
         throw "OCR result window should include $buttonName."
     }
@@ -45,7 +45,7 @@ if ($source -notmatch 'TranslateInlineOcrText\("de"') {
     throw 'Inline OCR toolbar should translate to German.'
 }
 
-foreach ($language in @('fr', 'es', 'it', 'ru')) {
+foreach ($language in @('fr', 'es', 'it', 'ru', 'nl')) {
     if ($source -notmatch ('TranslateCurrentText\("' + $language + '"')) {
         throw "OCR result window should translate to $language."
     }
@@ -74,7 +74,7 @@ if ($source -notmatch '\\u8f6c\\u5fb7') {
     throw 'German translation restore label should return to a readable Chinese button label.'
 }
 
-foreach ($escapedLabel in @('\\u8f6c\\u6cd5', '\\u8f6c\\u897f', '\\u8f6c\\u610f', '\\u8f6c\\u4fc4')) {
+foreach ($escapedLabel in @('\\u8f6c\\u6cd5', '\\u8f6c\\u897f', '\\u8f6c\\u610f', '\\u8f6c\\u4fc4', '\\u8f6c\\u8377')) {
     if ($source -notmatch $escapedLabel) {
         throw "New inline translation restore label should use readable Chinese Unicode label: $escapedLabel"
     }
@@ -100,7 +100,7 @@ if ($source -notmatch 'BaiduTargetLanguage') {
     throw 'Translation runner should map target languages to Baidu language codes.'
 }
 
-foreach ($baiduCode in @('"fra"', '"spa"', '"it"', '"ru"')) {
+foreach ($baiduCode in @('"fra"', '"spa"', '"it"', '"ru"', '"nl"')) {
     if ($source -notmatch [Regex]::Escape($baiduCode)) {
         throw "Baidu translation should support target code $baiduCode."
     }
